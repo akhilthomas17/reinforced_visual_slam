@@ -1,0 +1,8 @@
+sensor_msgs/Image keyframe_image
+sensor_msgs/Image keyframe_depth
+sensor_msgs/Image current_image
+float64[4] intrinsics
+float64[3] rotation_prior
+float64[3] translation_prior
+---
+geometry_msgs/Transform transform
