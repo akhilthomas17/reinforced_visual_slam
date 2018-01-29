@@ -8,7 +8,8 @@ from cv_bridge import CvBridge
 import cv2
 from PIL import Image
 
-from minieigen import Quaternion
+from minieigen import Quaternion as quat
+from geometry_msgs.msg import Transform, Quaternion, Vector3
 
 from depthmotionnet.vis import angleaxis_to_rotation_matrix
 from deepTAM.evaluation.helpers import *
@@ -53,6 +54,8 @@ class DeepTAMTracker(object):
         # Find inverse depth
         key_inv_depth = 1/keyframe_depth
 
+        print("Depth Image Processed")
+
         # Requirement: RGB has to np array float32, normalized in range (-0.5,0.5), with shape (1,3,240,320)
         # Get the Keyframe RGB image from ROS message and convert it to openCV Image format
         try:
@@ -86,27 +89,31 @@ class DeepTAMTracker(object):
         current_image = np.transpose(current_image, (2,0,1))
 
         # Loading prior rotation and translation
-        prev_rotation = Quaternion(req.rotation_prior[3], req.rotation_prior[0], req.rotation_prior[1], req.rotation_prior[2])
-        prev_rotation = prev_rotation.toAxisAngle()
+        #prev_rotation = quat(req.rotation_prior[3], req.rotation_prior[0], req.rotation_prior[1], req.rotation_prior[2])
+        #prev_rotation = prev_rotation.toAxisAngle()
+        intrinsics = np.array(req.intrinsics)
+        prev_rotation = np.array(req.rotation_prior)
+        prev_translation = np.array(req.translation_prior)
 
         # Loading the feed dict with converted values:
         feed_dict = {
             self.tracking_net.placeholders['depth_key']: key_inv_depth[np.newaxis,np.newaxis,:,:],
             self.tracking_net.placeholders['image_key']: keyframe_image[np.newaxis,:,:,:],
             self.tracking_net.placeholders['image_current']: current_image[np.newaxis,:,:,:],
-            self.tracking_net.placeholders['intrinsics']: req.intrinsics,
+            self.tracking_net.placeholders['intrinsics']: intrinsics,
             self.tracking_net.placeholders['prev_rotation']: prev_rotation,
-            self.tracking_net.placeholders['prev_translation']: req.translation_prior,
+            self.tracking_net.placeholders['prev_translation']: prev_translation,
         }
 
         output_arrs = self.session.run(output, feed_dict=feed_dict)
         t = output_arrs['predict_translation'][0]
         R = angleaxis_to_rotation_matrix(output_arrs['predict_rotation'][0])
-        R_w = R.dot(req.rotation_prior)
-        t_w = R.dot(req.translation_prior) + t
+        
+        R_w = R.dot(angleaxis_to_rotation_matrix(prev_rotation))
+        t_w = R.dot(prev_translation) + t
         
         print("Returning tracked response")
-        return TrackImageResponse(1)
+        return TrackImageResponse(Transform(Vector3(*t_w), Quaternion(*R_w)))
 
     def run(self):
         service = rospy.Service('track_image', TrackImage, self.track_image_cb)
