@@ -9,6 +9,7 @@ import cv2
 from PIL import Image
 
 from minieigen import Quaternion as quat
+#from pyquaternion import Quaternion as quat
 from geometry_msgs.msg import Transform, Quaternion, Vector3
 
 from depthmotionnet.vis import angleaxis_to_rotation_matrix
@@ -34,6 +35,17 @@ class DeepTAMTracker(object):
         self.output = self.tracking_net.build_net(**self.tracking_net.placeholders)
         optimistic_restore(self.session, network_session_path, verbose=True)
 
+    def rotation_matrix_to_quaternion(self, R):
+        q = Quaternion()
+        q_mini = quat(R)
+        q.x = q_mini[0]
+        q.y = q_mini[1]
+        q.z = q_mini[2]
+        q.w = q_mini[3]
+        # return Quaternion(*(quat(matrix=R).elements))
+        return q
+
+
     def track_image_cb(self, req, test=False):
         print("Recieved image to track")
 
@@ -53,8 +65,6 @@ class DeepTAMTracker(object):
         keyframe_depth = keyframe_depth.astype('float32')
         # Find inverse depth
         key_inv_depth = 1/keyframe_depth
-
-        print("Depth Image Processed")
 
         # Requirement: RGB has to np array float32, normalized in range (-0.5,0.5), with shape (1,3,240,320)
         # Get the Keyframe RGB image from ROS message and convert it to openCV Image format
@@ -100,20 +110,23 @@ class DeepTAMTracker(object):
             self.tracking_net.placeholders['depth_key']: key_inv_depth[np.newaxis,np.newaxis,:,:],
             self.tracking_net.placeholders['image_key']: keyframe_image[np.newaxis,:,:,:],
             self.tracking_net.placeholders['image_current']: current_image[np.newaxis,:,:,:],
-            self.tracking_net.placeholders['intrinsics']: intrinsics,
-            self.tracking_net.placeholders['prev_rotation']: prev_rotation,
-            self.tracking_net.placeholders['prev_translation']: prev_translation,
+            self.tracking_net.placeholders['intrinsics']: intrinsics[np.newaxis,:],
+            self.tracking_net.placeholders['prev_rotation']: prev_rotation[np.newaxis,:],
+            self.tracking_net.placeholders['prev_translation']: prev_translation[np.newaxis,:],
         }
 
-        output_arrs = self.session.run(output, feed_dict=feed_dict)
+        output_arrs = self.session.run(self.output, feed_dict=feed_dict)
         t = output_arrs['predict_translation'][0]
+        #print("t = :", t)
         R = angleaxis_to_rotation_matrix(output_arrs['predict_rotation'][0])
-        
+        #print("R = :", R)
         R_w = R.dot(angleaxis_to_rotation_matrix(prev_rotation))
+        print("R_w = :", R_w)
         t_w = R.dot(prev_translation) + t
-        
+        #print("t_w = :", t_w)
+
         print("Returning tracked response")
-        return TrackImageResponse(Transform(Vector3(*t_w), Quaternion(*R_w)))
+        return TrackImageResponse(Transform(Vector3(*t_w), self.rotation_matrix_to_quaternion(R_w)))
 
     def run(self):
         service = rospy.Service('track_image', TrackImage, self.track_image_cb)

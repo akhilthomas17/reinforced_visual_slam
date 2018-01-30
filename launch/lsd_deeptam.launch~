@@ -1,0 +1,31 @@
+<launch>
+    <node name="deepTAM_tracker" pkg="reinforced_visual_slam" type="deepTAM_tracker.py" respawn="true" output="screen"/>
+    
+    <node name="lsd_node_reinforced" pkg="lsd_slam_core" type="deepTAM_live_slam" respawn="true" output="screen">
+    <remap from="/image" to="/camera/rgb/image_color"/>
+    <remap from="/depth" to="/camera/depth/image"/>
+    <remap from="/camera_info" to="/camera/depth/camera_info"/>
+    <remap from="/lsd_slam/debug" to="/lsd_slam_reinforced/debug"/>
+    <remap from="/lsd_slam/graph" to="/lsd_slam_reinforced/graph"/>
+    <remap from="/lsd_slam/keyframes" to="/lsd_slam_reinforced/keyframes"/>
+    <remap from="/lsd_slam/liveframes" to="/lsd_slam_reinforced/liveframes"/>
+    </node>
+
+<!--
+    <node name="lsd_node_reinforced_viewer" pkg="lsd_slam_viewer" type="viewer" respawn="true">
+    <remap from="/lsd_slam/debug" to="/lsd_slam_reinforced/debug"/>
+    <remap from="/lsd_slam/graph" to="/lsd_slam_reinforced/graph"/>
+    <remap from="/lsd_slam/keyframes" to="/lsd_slam_reinforced/keyframes"/>
+    <remap from="/lsd_slam/liveframes" to="/lsd_slam_reinforced/liveframes"/>
+    </node>
+
+    #<node name="lsd_slam" pkg="lsd_slam_core" type="live_slam" respawn="true" output="screen">
+    #<remap from="/image" to="/camera/rgb/image_color"/>
+    #<remap from="/depth" to="/camera/depth/image"/>
+    #<remap from="/camera_info" to="/camera/depth/camera_info"/>
+    #</node>
+
+    #<node name="lsd_slam_viewer" pkg="lsd_slam_viewer" type="viewer" respawn="true"/>
+    -->
+
+</launch>
