@@ -9,7 +9,7 @@ import cv2
 from PIL import Image
 
 from minieigen import Quaternion as quat
-#from pyquaternion import Quaternion as quat
+#from pyquaternion import Quaternion as Quat
 from geometry_msgs.msg import Transform, Quaternion, Vector3
 
 from depthmotionnet.vis import angleaxis_to_rotation_matrix
@@ -42,11 +42,21 @@ class DeepTAMTracker(object):
         q.y = q_mini[1]
         q.z = q_mini[2]
         q.w = q_mini[3]
-        # return Quaternion(*(quat(matrix=R).elements))
+        # return Quat(*(quat(matrix=R).elements))
+        return q
+
+    def angle_axis_to_quaternion(self, axis_a):
+        q = Quaternion()
+        q_mini = quat(axis_a,0)
+        q.x = q_mini[0]
+        q.y = q_mini[1]
+        q.z = q_mini[2]
+        q.w = q_mini[3]
+        # return Quat(*(quat(axis=axis_a).elements))
         return q
 
 
-    def track_image_cb(self, req, test=False):
+    def track_image_cb(self, req, test=True):
         print("Recieved image to track")
 
         # Requirement: Depth has to np array float32, in meters, with shape (1,1,240,320)
@@ -56,13 +66,15 @@ class DeepTAMTracker(object):
         except CvBridgeError as e:
             print(e)
             return TrackImageResponse(0)
+        if test:
+            print("Keyframe max depth", keyframe_depth.max())
+            depth_plot = (keyframe_depth*255/4).astype('uint8')
+            cv2.imshow('CV Keyframe Depth',depth_plot)
+            cv2.waitKey(0)
         # Resize Keyframe depth image to (320W,240H)
         keyframe_depth = cv2.resize(keyframe_depth, (320, 240))
-        if test:
-            cv2.imshow('CV Keyframe Depth',keyframe_depth)
-            cv2.waitKey(3)
         # Convert Keyframe depth image to Float32 
-        keyframe_depth = keyframe_depth.astype('float32')
+        #keyframe_depth = keyframe_depth.astype('float32')
         # Find inverse depth
         key_inv_depth = 1/keyframe_depth
 
@@ -75,7 +87,7 @@ class DeepTAMTracker(object):
             return TrackImageResponse(0)
         if test:
             cv2.imshow('CV Keyframe RGB', keyframe_image)
-            cv2.waitKey(3)
+            cv2.waitKey(10)
         # Normalize Keyframe RGB image to range (-0.5, 0.5) and save as Float32
         keyframe_image = cv2.normalize(keyframe_image, None, alpha=-0.5, beta=0.5, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_32F)
         # Resize Keyframe RGB image to (320W,240H) and reshape it to (3, 240, 320)
@@ -91,7 +103,7 @@ class DeepTAMTracker(object):
             return TrackImageResponse(0)
         if test:
             cv2.imshow('CV Current RGB', current_image)
-            cv2.waitKey(3)
+            cv2.waitKey(10)
         # Normalize Current RGB image to range (-0.5, 0.5) and save as Float32
         current_image = cv2.normalize(current_image, None, alpha=-0.5, beta=0.5, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_32F)
         # Resize Current RGB image to (320W,240H) and reshape it to (3, 240, 320)
@@ -116,17 +128,31 @@ class DeepTAMTracker(object):
         }
 
         output_arrs = self.session.run(self.output, feed_dict=feed_dict)
+
         t = output_arrs['predict_translation'][0]
         #print("t = :", t)
+        # Uncomment below to find SE3 with respect to world coordinates
         R = angleaxis_to_rotation_matrix(output_arrs['predict_rotation'][0])
+        T = np.vstack((np.hstack((R,t[:,np.newaxis])), np.asarray([0,0,0,1])))
+        Tinv = np.linalg.inv(T)
+        Rinv = Tinv[:3,:3]
+        tinv = Tinv[:3,3]
+
+        if test:
+            cv2.imshow('warped_img', output_arrs['warped_image'][0].transpose([1,2,0])+0.5)
+            cv2.waitKey(10)
+
         #print("R = :", R)
-        R_w = R.dot(angleaxis_to_rotation_matrix(prev_rotation))
-        print("R_w = :", R_w)
-        t_w = R.dot(prev_translation) + t
+        #R_w = R.dot(angleaxis_to_rotation_matrix(prev_rotation))
+        #print("R_w = :", R_w)
+        #t_w = R.dot(prev_translation) + t
         #print("t_w = :", t_w)
+        #print("Angle axis:", output_arrs['predict_rotation'][0])
+        #q = self.angle_axis_to_quaternion(output_arrs['predict_rotation'][0])
+        #print("Quaternion:", q)
 
         print("Returning tracked response")
-        return TrackImageResponse(Transform(Vector3(*t_w), self.rotation_matrix_to_quaternion(R_w)))
+        return TrackImageResponse(Transform(Vector3(*tinv), self.rotation_matrix_to_quaternion(Rinv)))
 
     def run(self):
         service = rospy.Service('track_image', TrackImage, self.track_image_cb)
