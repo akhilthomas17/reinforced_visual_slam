@@ -42,6 +42,8 @@ class DeepTAMTracker(object):
         q.y = q_mini[1]
         q.z = q_mini[2]
         q.w = q_mini[3]
+        print("Quaternion mini:", q.x, q.y, q.z, q.w)
+        # print("Quaternion py:", Quat(*(quat(matrix=R).elements)))
         # return Quat(*(quat(matrix=R).elements))
         return q
 
@@ -56,7 +58,7 @@ class DeepTAMTracker(object):
         return q
 
 
-    def track_image_cb(self, req, test=True):
+    def track_image_cb(self, req, test=False):
         print("Recieved image to track")
 
         # Requirement: Depth has to np array float32, in meters, with shape (1,1,240,320)
@@ -67,7 +69,6 @@ class DeepTAMTracker(object):
             print(e)
             return TrackImageResponse(0)
         if test:
-            print("Keyframe max depth", keyframe_depth.max())
             depth_plot = (keyframe_depth*255/4).astype('uint8')
             cv2.imshow('CV Keyframe Depth',depth_plot)
             cv2.waitKey(0)
@@ -77,6 +78,7 @@ class DeepTAMTracker(object):
         #keyframe_depth = keyframe_depth.astype('float32')
         # Find inverse depth
         key_inv_depth = 1/keyframe_depth
+        #print("inverse depth dtype", key_inv_depth.dtype)
 
         # Requirement: RGB has to np array float32, normalized in range (-0.5,0.5), with shape (1,3,240,320)
         # Get the Keyframe RGB image from ROS message and convert it to openCV Image format
@@ -114,15 +116,19 @@ class DeepTAMTracker(object):
         #prev_rotation = quat(req.rotation_prior[3], req.rotation_prior[0], req.rotation_prior[1], req.rotation_prior[2])
         #prev_rotation = prev_rotation.toAxisAngle()
         intrinsics = np.array(req.intrinsics)
+        #print("intrinsics", intrinsics)
         prev_rotation = np.array(req.rotation_prior)
+        #print("prev_rotation", prev_rotation)
         prev_translation = np.array(req.translation_prior)
+        #print("prev_translation", prev_translation)
 
         # Loading the feed dict with converted values:
         feed_dict = {
             self.tracking_net.placeholders['depth_key']: key_inv_depth[np.newaxis,np.newaxis,:,:],
             self.tracking_net.placeholders['image_key']: keyframe_image[np.newaxis,:,:,:],
             self.tracking_net.placeholders['image_current']: current_image[np.newaxis,:,:,:],
-            self.tracking_net.placeholders['intrinsics']: intrinsics[np.newaxis,:],
+            #self.tracking_net.placeholders['intrinsics']: intrinsics[np.newaxis,:],
+            self.tracking_net.placeholders['intrinsics']: np.array([[0.89115971, 1.18821299, 0.5, 0.5]],dtype=np.float32),
             self.tracking_net.placeholders['prev_rotation']: prev_rotation[np.newaxis,:],
             self.tracking_net.placeholders['prev_translation']: prev_translation[np.newaxis,:],
         }
@@ -133,12 +139,13 @@ class DeepTAMTracker(object):
         #print("t = :", t)
         # Uncomment below to find SE3 with respect to world coordinates
         R = angleaxis_to_rotation_matrix(output_arrs['predict_rotation'][0])
+
         T = np.vstack((np.hstack((R,t[:,np.newaxis])), np.asarray([0,0,0,1])))
         Tinv = np.linalg.inv(T)
         Rinv = Tinv[:3,:3]
         tinv = Tinv[:3,3]
 
-        if test:
+        if True:
             cv2.imshow('warped_img', output_arrs['warped_image'][0].transpose([1,2,0])+0.5)
             cv2.waitKey(10)
 
@@ -150,7 +157,11 @@ class DeepTAMTracker(object):
         #print("Angle axis:", output_arrs['predict_rotation'][0])
         #q = self.angle_axis_to_quaternion(output_arrs['predict_rotation'][0])
         #print("Quaternion:", q)
-
+        print("translation:", Vector3(*tinv))
+        
+        #tinv = np.asarray([1,2,3])
+        #Rinv = np.eye(3)
+        
         print("Returning tracked response")
         return TrackImageResponse(Transform(Vector3(*tinv), self.rotation_matrix_to_quaternion(Rinv)))
 

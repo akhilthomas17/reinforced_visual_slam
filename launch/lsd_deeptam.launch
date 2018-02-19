@@ -2,13 +2,13 @@
     
     <node name="deepTAM_tracker" pkg="reinforced_visual_slam" type="deepTAM_tracker.py" respawn="true" output="screen"/>
 
-    <node name="lsd_node_reinforced" pkg="lsd_slam_core" type="deepTAM_live_slam" respawn="true" output="screen">
-    
+    <node name="lsd_node_reinforced" pkg="lsd_slam_core" type="deepTAM_live_slam" respawn="true" output="screen" launch-prefix="xterm -e gdb --args" >
     <remap from="/image" to="/camera/rgb/image_color"/>
     <remap from="/depth" to="/camera/depth/image"/>
     <remap from="/camera_info" to="/camera/depth/camera_info"/>
-
-    <param name="KFDistWeight" value="20" />
+    <param name="printThreadingInfo" value="True" />
+    <param name="printConstraintSearchInfo" value="True" />
+    <param name="enablePrintDebugInfo" value="True" />
 
     </node>
 
@@ -34,6 +34,9 @@
     #</node>
 
     #<node name="lsd_slam_viewer" pkg="lsd_slam_viewer" type="viewer" respawn="true" output="screen"/>
+
+    rosrun lsd_slam_core deepTAM_live_slam depth:=/camera/depth/image camera_info:=/camera/depth/camera_info image:=/camera/rgb/image_color
+
 -->
 
 </launch>
