@@ -61,6 +61,7 @@ find_package(OpenCV REQUIRED)
 add_service_files(
   FILES
   TrackImage.srv
+  TrackerStatus.srv
 )
 
 ## Generate actions in the 'action' folder

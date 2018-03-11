@@ -2,7 +2,6 @@
 
 from reinforced_visual_slam.srv import *
 import rospy
-import tensorflow as tf
 
 from cv_bridge import CvBridge
 import cv2
@@ -11,21 +10,44 @@ from PIL import Image
 from minieigen import Quaternion as quat
 #from pyquaternion import Quaternion as Quat
 from geometry_msgs.msg import Transform, Quaternion, Vector3
+from std_msgs.msg import Bool
+
+import tensorflow as tf
 
 from depthmotionnet.vis import angleaxis_to_rotation_matrix
+from depthmotionnet.dataset_tools.view_tools import adjust_intrinsics
+
 from deepTAM.evaluation.helpers import *
+from deepTAM.datatypes import View
+
 from tfutils.helpers import optimistic_restore
 
 class DeepTAMTracker(object):
 
-    def __init__(self):
+    def __init__(self, input_img_width=640, input_img_height=480):
         rospy.init_node('deepTAM_tracker')
+        
+        state = rospy.Service('tracker_status', TrackerStatus, self.tracker_status_cb)
+        self.status = False
+        #self.status_pub = rospy.Publisher('tracker_status', Bool, queue_size=1)
+        #self.status_pub.publish(Bool(False))
+
         print("Configuring tensorflow session")
         gpu_options = tf.GPUOptions()
         gpu_options.per_process_gpu_memory_fraction=0.8
         self.session = tf.InteractiveSession(config=tf.ConfigProto(allow_soft_placement=True, gpu_options=gpu_options))
         self.session.run(tf.global_variables_initializer())
         self._cv_bridge = CvBridge()
+
+        # Sun 3d normalized intrinsics
+        self.sun3d_intrinsics = np.array([[0.89115971, 1.18821299, 0.5, 0.5]],dtype=np.float32)
+        self.sun3d_K = np.eye(3)
+        self.sun3d_K[0,0] = self.sun3d_intrinsics[0][0]*input_img_width
+        self.sun3d_K[1,1] = self.sun3d_intrinsics[0][1]*input_img_height
+        self.sun3d_K[0,2] = self.sun3d_intrinsics[0][2]*input_img_width
+        self.sun3d_K[1,2] = self.sun3d_intrinsics[0][3]*input_img_height
+        self.input_img_height = input_img_height
+        self.input_img_width = input_img_width
 
     def configure(self, network_script_path, network_session_path):
         print("Configuring the deepTAM network")
@@ -34,6 +56,8 @@ class DeepTAMTracker(object):
         [self.image_height, self.image_width] = self.tracking_net.placeholders['image_key'].get_shape().as_list()[-2:]
         self.output = self.tracking_net.build_net(**self.tracking_net.placeholders)
         optimistic_restore(self.session, network_session_path, verbose=True)
+        self.status = True
+        #self.status_pub.publish(Bool(True))
 
     def rotation_matrix_to_quaternion(self, R):
         q = Quaternion()
@@ -57,9 +81,59 @@ class DeepTAMTracker(object):
         # return Quat(*(quat(axis=axis_a).elements))
         return q
 
+    def convertCvRGBToTensor(self, rgb, width=320, height=240, normalize=True):
+        if normalize:
+            rgb_new = cv2.normalize(rgb, None, alpha=-0.5, beta=0.5, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_32F)
+        # Resize Keyframe RGB image to (320W,240H) and reshape it to (3, height, width)
+        rgb_new = cv2.resize(rgb_new, (width, height))
+        rgb_new = np.transpose(rgb_new, (2,0,1))
+        return rgb_new
+
+    def convertPILRgbToAdjustedView(self, intrinsics, rgb, depth=None, width=320, height=240):
+        # Convert Keyframe RGB to sun3d intrinsics and reshape to (width, height)
+        K = np.eye(3)
+        K[0,0] = intrinsics[0]
+        K[1,1] = intrinsics[1]
+        K[0,2] = intrinsics[2]
+        K[1,2] = intrinsics[3]
+        R = np.eye(3)
+        t = np.array([0,0,0],dtype=np.float)
+
+        if not depth is None:
+            depth_metric = 'camera_z'
+        else:
+            depth_metric = None
+        
+        rgb_view = View(R=R,t=t,K=K,image=rgb, depth=depth, depth_metric=depth_metric)
+        new_rgb_view = adjust_intrinsics(rgb_view, self.sun3d_K, width, height)
+        new_rgb = new_rgb_view.image
+
+        if False:
+            new_rgb.show()
+
+        # Normalize Keyframe RGB image to range (-0.5, 0.5) and save as Float32
+        new_rgb = np.array(new_rgb)[:, :, ::-1].transpose([2,0,1]).astype(np.float32)/255-0.5
+        new_rgb_view = new_rgb_view._replace(image=new_rgb)
+        
+        if not depth is None:
+            d = new_rgb_view.depth
+            d[d <= 0] = np.nan
+            new_rgb_view = new_rgb_view._replace(depth=d)
+
+
+        del rgb_view
+        return new_rgb_view
+
+
+    def tracker_status_cb(self, req):
+        return TrackerStatusResponse(Bool(self.status))
 
     def track_image_cb(self, req, test=False):
         print("Recieved image to track")
+
+        # Load the intrinsics from the request
+        intrinsics = np.array(req.intrinsics)
+        #print("intrinsics", intrinsics)
 
         # Requirement: Depth has to np array float32, in meters, with shape (1,1,240,320)
         # Get the Keyframe depth image and convert it to openCV Image format (Assuming Depth in Meters)
@@ -68,17 +142,11 @@ class DeepTAMTracker(object):
         except CvBridgeError as e:
             print(e)
             return TrackImageResponse(0)
-        if test:
-            depth_plot = (keyframe_depth*255/4).astype('uint8')
-            cv2.imshow('CV Keyframe Depth',depth_plot)
-            cv2.waitKey(0)
+
         # Resize Keyframe depth image to (320W,240H)
         keyframe_depth = cv2.resize(keyframe_depth, (320, 240))
         # Convert Keyframe depth image to Float32 
         #keyframe_depth = keyframe_depth.astype('float32')
-        # Find inverse depth
-        key_inv_depth = 1/keyframe_depth
-        #print("inverse depth dtype", key_inv_depth.dtype)
 
         # Requirement: RGB has to np array float32, normalized in range (-0.5,0.5), with shape (1,3,240,320)
         # Get the Keyframe RGB image from ROS message and convert it to openCV Image format
@@ -87,14 +155,26 @@ class DeepTAMTracker(object):
         except CvBridgeError as e:
             print(e)
             return TrackImageResponse(0)
-        if test:
+
+        if False:
             cv2.imshow('CV Keyframe RGB', keyframe_image)
-            cv2.waitKey(10)
-        # Normalize Keyframe RGB image to range (-0.5, 0.5) and save as Float32
-        keyframe_image = cv2.normalize(keyframe_image, None, alpha=-0.5, beta=0.5, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_32F)
-        # Resize Keyframe RGB image to (320W,240H) and reshape it to (3, 240, 320)
-        keyframe_image = cv2.resize(keyframe_image, (320, 240))
-        keyframe_image = np.transpose(keyframe_image, (2,0,1))
+            #keyframe_image.show()
+
+        # Convert CV image to PIL image and resize
+        keyframe_image = cv2.cvtColor(keyframe_image, cv2.COLOR_BGR2RGB)
+        keyframe_image = Image.fromarray(keyframe_image).resize((320, 240))
+
+        keyframe_image_view = self.convertPILRgbToAdjustedView(intrinsics, keyframe_image, keyframe_depth)
+        keyframe_image = keyframe_image_view.image
+        keyframe_depth = keyframe_image_view.depth
+
+        if False:
+            depth_plot = (keyframe_depth*255/3.5).astype('uint8')
+            cv2.imshow('CV Keyframe Depth',depth_plot)
+
+        # Find inverse depth
+        key_inv_depth = 1/keyframe_depth
+        #print("inverse depth dtype", key_inv_depth.dtype)
 
         # Requirement: RGB has to np array float32, normalized in range (-0.5,0.5), with shape (1,3,240,320)
         # Get the Current RGB image from ROS message and convert it to openCV Image format
@@ -103,20 +183,19 @@ class DeepTAMTracker(object):
         except CvBridgeError as e:
             print(e)
             return TrackImageResponse(0)
+        
         if test:
             cv2.imshow('CV Current RGB', current_image)
-            cv2.waitKey(10)
-        # Normalize Current RGB image to range (-0.5, 0.5) and save as Float32
-        current_image = cv2.normalize(current_image, None, alpha=-0.5, beta=0.5, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_32F)
-        # Resize Current RGB image to (320W,240H) and reshape it to (3, 240, 320)
-        current_image = cv2.resize(current_image, (320, 240))
-        current_image = np.transpose(current_image, (2,0,1))
+            #current_image.show()
+
+        # Convert CV image to PIL image
+        current_image = cv2.cvtColor(current_image, cv2.COLOR_BGR2RGB)
+        current_image = Image.fromarray(current_image).resize((320, 240))
+
+        current_image_view = self.convertPILRgbToAdjustedView(intrinsics, current_image)
+        current_image = current_image_view.image
 
         # Loading prior rotation and translation
-        #prev_rotation = quat(req.rotation_prior[3], req.rotation_prior[0], req.rotation_prior[1], req.rotation_prior[2])
-        #prev_rotation = prev_rotation.toAxisAngle()
-        intrinsics = np.array(req.intrinsics)
-        #print("intrinsics", intrinsics)
         prev_rotation = np.array(req.rotation_prior)
         #print("prev_rotation", prev_rotation)
         prev_translation = np.array(req.translation_prior)
@@ -127,8 +206,7 @@ class DeepTAMTracker(object):
             self.tracking_net.placeholders['depth_key']: key_inv_depth[np.newaxis,np.newaxis,:,:],
             self.tracking_net.placeholders['image_key']: keyframe_image[np.newaxis,:,:,:],
             self.tracking_net.placeholders['image_current']: current_image[np.newaxis,:,:,:],
-            #self.tracking_net.placeholders['intrinsics']: intrinsics[np.newaxis,:],
-            self.tracking_net.placeholders['intrinsics']: np.array([[0.89115971, 1.18821299, 0.5, 0.5]],dtype=np.float32),
+            self.tracking_net.placeholders['intrinsics']: self.sun3d_intrinsics,
             self.tracking_net.placeholders['prev_rotation']: prev_rotation[np.newaxis,:],
             self.tracking_net.placeholders['prev_translation']: prev_translation[np.newaxis,:],
         }
@@ -137,8 +215,8 @@ class DeepTAMTracker(object):
 
         t = output_arrs['predict_translation'][0]
         #print("t = :", t)
-        # Uncomment below to find SE3 with respect to world coordinates
         R = angleaxis_to_rotation_matrix(output_arrs['predict_rotation'][0])
+        #print("R = :", R)
 
         T = np.vstack((np.hstack((R,t[:,np.newaxis])), np.asarray([0,0,0,1])))
         Tinv = np.linalg.inv(T)
@@ -147,9 +225,9 @@ class DeepTAMTracker(object):
 
         if True:
             cv2.imshow('warped_img', output_arrs['warped_image'][0].transpose([1,2,0])+0.5)
-            cv2.waitKey(10)
+            cv2.waitKey(0)
 
-        #print("R = :", R)
+        # Uncomment below to find SE3 with respect to world coordinates
         #R_w = R.dot(angleaxis_to_rotation_matrix(prev_rotation))
         #print("R_w = :", R_w)
         #t_w = R.dot(prev_translation) + t
