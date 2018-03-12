@@ -51,11 +51,11 @@ find_package(OpenCV REQUIRED)
 ##   * add every package in MSG_DEP_SET to generate_messages(DEPENDENCIES ...)
 
 ## Generate messages in the 'msg' folder
-# add_message_files(
-#   FILES
-#   Message1.msg
-#   Message2.msg
-# )
+add_message_files(
+  FILES
+  keyframeMsg.msg
+  keyframeGraphMsg.msg
+)
 
 ## Generate services in the 'srv' folder
 add_service_files(
@@ -113,6 +113,7 @@ catkin_package(
 #  LIBRARIES reinforced_v_slam
 #  CATKIN_DEPENDS cv_bridge geometry_msgs message_generation rospy sensor_msgs std_msgs
 #  DEPENDS system_lib
+CATKIN_DEPENDS message_runtime
 )
 
 ###########

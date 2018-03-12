@@ -225,7 +225,7 @@ class DeepTAMTracker(object):
 
         if True:
             cv2.imshow('warped_img', output_arrs['warped_image'][0].transpose([1,2,0])+0.5)
-            cv2.waitKey(0)
+            cv2.waitKey(200)
 
         # Uncomment below to find SE3 with respect to world coordinates
         #R_w = R.dot(angleaxis_to_rotation_matrix(prev_rotation))

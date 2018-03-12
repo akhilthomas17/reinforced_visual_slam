@@ -33,6 +33,10 @@
         <remap from="/lsd_slam/liveframes" to="/lsd_slam_reinforced/liveframes"/>
     </node>
 
+    <node name="siasa_viewer" pkg="reinforced_visual_slam" type="siasa_viewer.py" respawn="true" output="screen">
+        <remap from="/lsd_slam/liveframes" to="/lsd_slam_reinforced/liveframes"/>
+    </node>
+
 
 
 <!--
