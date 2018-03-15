@@ -38,8 +38,12 @@ class SiasaViewer(object):
     def run_listener(self):
         # Visualize the groundtruth
         if rospy.has_param('~gt'):
+            self.has_gt = True
+            self.gt_start = 0
             path_to_gt_file = rospy.get_param('~gt')
-            self.visualize_groundtruth(path_to_gt_file)
+            self.gt_pose_list, self.gt_timestamps = self.visualize_groundtruth(path_to_gt_file)
+        else:
+            self.has_gt = False
         # Add subscribers for liveframes and keyframes
         self.liveframe_sub = rospy.Subscriber("/lsd_slam_reinforced/liveframes", keyframeMsg, self.liveframe_callback)
         self.keyframe_sub = rospy.Subscriber("/lsd_slam_reinforced/keyframes", keyframeMsg, self.keyframe_callback)
@@ -47,15 +51,18 @@ class SiasaViewer(object):
         rospy.spin()
 
     def visualize_groundtruth(self, path_to_gt_file):
-        gt_data = np.loadtxt(path_to_gt_file, dtype=np.float32)
+        gt_data = np.loadtxt(path_to_gt_file, dtype=float)
         gt_pose_list = [None]*len(gt_data)
+        gt_timestamps = gt_data[:,0]
+        gt_data = gt_data.astype(np.float32)
         for indx in range(len(gt_data)):
             t = gt_data[indx, 1:4]
             R = quaternion_to_rotation_matrix(gt_data[indx, 4:].astype(np.float64))
             # Need to invert the pose since we require worldToCam pose
-            Rinv, tinv = invert_transformation(R, t)
+            Rinv, tinv, T_camToWorld = invert_transformation(R, t)
             gt_pose_list[indx] = Pose(R=Rinv, t=tinv)
-        send_tra_to_siasa(gt_pose_list, color=(0,1,0), name='/cam_gt')
+        #send_tra_to_siasa(gt_pose_list, color=(0,1,0), name='/cam_gt')
+        return gt_pose_list, gt_timestamps
 
     def keyframe_callback(self, keyframeMsg_data):
         rospy.loginfo("Received keyframe message")
@@ -68,17 +75,27 @@ class SiasaViewer(object):
         pointcloud_siasa = self.convert_to_siasa_pointcloud(pointcloud_array, T_camToWorld, keyframeMsg_data)
         #pointcloud = compute_point_cloud_from_depthmap(depth_abs, K, R1, t1, colors=image)#image1_2)
         aa = siasa.AttributeArray('Colors', pointcloud_siasa['colors'])
-        siasa.setPolyData(pointcloud_siasa['points'],'/points_keyframe', 0, point_attributes=[aa])
+        siasa.setPolyData(pointcloud_siasa['points'],'/points_keyframe', 0, point_attributes=[aa], connection=self.connection)
         if self.debug:
             print("Pointcloud: ", pointcloud_bytes[:36])
             rospy.logdebug("Pointcloud data input length: %d", len(pointcloud_bytes))
             rospy.logdebug("Pointcloud struct length: %d", arr_len)
-            rospy.logerr("Pointcloud siasa length: %d", len(pointcloud_siasa['points']))
+            rospy.logdebug("Pointcloud siasa length: %d", len(pointcloud_siasa['points']))
 
     def liveframe_callback(self, keyframeMsg_data):
         rospy.loginfo("Received liveframe message")
         camToWorld = np.asarray(keyframeMsg_data.camToWorld, dtype=np.float32)
+        if self.has_gt:
+            timestamp_now = keyframeMsg_data.time
+            self.gt_end = np.argmax(self.gt_timestamps > timestamp_now)
+            gt_pose_list_now = self.gt_pose_list[self.gt_start : self.gt_end]
+            self.gt_start = self.gt_end
+            send_tra_to_siasa(gt_pose_list_now, color=(0,1,0), name='/cam_gt', ind_prefix=self.gt_start)
         T_camToWorld = self.send_frame_to_siasa(camToWorld, '/cam_live_reinforced', keyframeMsg_data.id, self.prop_liveframe)
+        if self.debug:
+            rospy.loginfo("timestamp_now: %f", timestamp_now)
+            print("self.gt_timestamps: ", self.gt_timestamps)
+            rospy.logerr("self.gt_end: %d", self.gt_end)
 
     def send_frame_to_siasa(self, camToWorld, cam_name, idx, cam_prop):
         t = camToWorld[4:]
@@ -109,7 +126,8 @@ class SiasaViewer(object):
         for x in range(keyframeMsg_data.width):
             for y in range(keyframeMsg_data.height):
                 idepth = pointcloud_array[x + keyframeMsg_data.width*y].idepth
-                if np.isfinite(idepth) and idepth > 0:
+                # setting a limit of 5m to maximum observable depth (not ideal!!)
+                if np.isfinite(idepth) and idepth > 0.2:
                     valid_points += 1
                     valid_xy.append((x,y))
         points_arr = np.empty((valid_points,3), dtype=np.float32)
