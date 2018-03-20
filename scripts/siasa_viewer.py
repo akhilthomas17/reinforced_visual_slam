@@ -89,8 +89,9 @@ class SiasaViewer(object):
             timestamp_now = keyframeMsg_data.time
             self.gt_end = np.argmax(self.gt_timestamps > timestamp_now)
             gt_pose_list_now = self.gt_pose_list[self.gt_start : self.gt_end]
-            self.gt_start = self.gt_end
-            send_tra_to_siasa(gt_pose_list_now, color=(0,1,0), name='/cam_gt', ind_prefix=self.gt_start)
+            if self.gt_end > self.gt_start:
+                send_tra_to_siasa(gt_pose_list_now, color=(0,1,0), name='/cam_gt', ind_prefix=self.gt_start)
+                self.gt_start = self.gt_end
         T_camToWorld = self.send_frame_to_siasa(camToWorld, '/cam_live_reinforced', keyframeMsg_data.id, self.prop_liveframe)
         if self.debug:
             rospy.loginfo("timestamp_now: %f", timestamp_now)
