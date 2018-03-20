@@ -25,20 +25,20 @@
         <remap from="/lsd_slam/liveframes" to="/lsd_slam_reinforced/liveframes"/>
 
     </node>
-<!--
     <node name="lsd_node_reinforced_viewer" pkg="lsd_slam_viewer" type="viewer" respawn="true" output="screen">
         <remap from="/lsd_slam/debug" to="/lsd_slam_reinforced/debug"/>
         <remap from="/lsd_slam/graph" to="/lsd_slam_reinforced/graph"/>
         <remap from="/lsd_slam/keyframes" to="/lsd_slam_reinforced/keyframes"/>
         <remap from="/lsd_slam/liveframes" to="/lsd_slam_reinforced/liveframes"/>
     </node>
--->
+    
     <node name="siasa_viewer" pkg="reinforced_visual_slam" type="siasa_viewer.py" respawn="true" output="screen">
         <remap from="/lsd_slam/liveframes" to="/lsd_slam_reinforced/liveframes"/>
         <param name="gt" value="/misc/lmbraid17/zhouh/data/rgbd_tum/rgbd_dataset_freiburg1_teddy/groundtruth.txt"/>
     </node>
 
-
+<!--
+-->
 
 <!--
 
