@@ -10,6 +10,7 @@ from std_msgs.msg import String
 import numpy as np
 import matplotlib.colors as colors
 import json
+from minieigen import Quaternion
 
 
 class SiasaViewer(object):
@@ -41,7 +42,7 @@ class SiasaViewer(object):
             self.has_gt = True
             self.gt_start = 0
             path_to_gt_file = rospy.get_param('~gt')
-            self.gt_pose_list, self.gt_timestamps = self.visualize_groundtruth(path_to_gt_file)
+            self.gt_pose_list, self.gt_timestamps = self.shift_and_visualize_gt(path_to_gt_file)
         else:
             self.has_gt = False
         # Add subscribers for liveframes and keyframes
@@ -49,6 +50,32 @@ class SiasaViewer(object):
         self.keyframe_sub = rospy.Subscriber("/lsd_slam_reinforced/keyframes", keyframeMsg, self.keyframe_callback)
         rospy.loginfo("Initialized siasa viewer node")
         rospy.spin()
+
+    def shift_and_visualize_gt(self, path_to_gt_file):
+        """ Read associated groundtruth file and shift origin of the pose list so that it matches with the estimated trajectory """
+        gt_data = np.loadtxt(path_to_gt_file, usecols=(0,1,2,3,4,5,6,7), dtype=float)
+        gt_pose_list = [None]*len(gt_data)
+        gt_pose_list[0] = Pose( R=np.eye(3), t=np.zeros((1,3)) )
+        gt_timestamps = gt_data[:, 0]
+        t_np = gt_data[:, 1:4]
+        q_np = np.roll(gt_data[:, 4:], 1, axis=1)
+        # Storing the initial pose of the groundtruth list as 3D Rigidbody Transform, assuming that it corresponds to origin of estimated trjectory
+        R_origin = np.asarray( Quaternion(*(q_np[0,:])).toRotationMatrix() )
+        T_gt_to_est = np.eye(4)
+        T_gt_to_est[:3, :3] = R_origin
+        T_gt_to_est[:3, 3] = t_np[0,:]
+        T_gt_to_est = np.linalg.inv(T_gt_to_est)
+        for ii in range(1, len(t_np)):
+            T_current = np.eye(4)
+            T_current[:3, 3] = t_np[ii,:]
+            mini_q = Quaternion(*(q_np[ii, :]))
+            T_current[:3, :3] = np.asarray(mini_q.toRotationMatrix())
+            # Shift origin of current pose by multiplying it with Transformation matrix
+            T_shifted = np.dot(T_gt_to_est, T_current)
+            T_shifted = np.linalg.inv(T_shifted)
+            shifted_pose = Pose(R=T_shifted[:3, :3], t=T_shifted[:3, 3])
+            gt_pose_list[ii] = shifted_pose
+        return gt_pose_list, gt_timestamps
 
     def visualize_groundtruth(self, path_to_gt_file):
         gt_data = np.loadtxt(path_to_gt_file, dtype=float)
