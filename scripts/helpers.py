@@ -16,10 +16,15 @@ def quaternion_to_rotation_matrix(q_np):
 	R = q_mini.toRotationMatrix()
 	return np.asarray(R, dtype=np.float32)
 
-def invert_transformation(R, t):
+def invert_transformation(R, t, scale=1):
 	T = np.eye(4)
 	T[:3, :3] = R
 	T[:3, 3] = t
+	# Uncomment below to convert scale of the current output.
+	T_scale = np.eye(4)
+	R_scale = np.eye(3)*scale
+	T_scale[:3,:3] = R_scale
+	T = np.dot(T_scale, T)
 	Tinv = np.linalg.inv(T)
 	Rinv = Tinv[:3,:3]
 	tinv = Tinv[:3,3]

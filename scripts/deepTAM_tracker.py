@@ -172,7 +172,10 @@ class DeepTAMTracker(object):
 
         if plot_debug:
             cv2.imshow('CV Keyframe RGB', keyframe_image)
+            depth_plot = (keyframe_depth*255/3.5).astype('uint8')
+            cv2.imshow('CV Keyframe Depth',depth_plot)
             #keyframe_image.show()
+
 
         # Convert CV image to PIL image and resize
         keyframe_image = cv2.cvtColor(keyframe_image, cv2.COLOR_BGR2RGB)
@@ -181,10 +184,6 @@ class DeepTAMTracker(object):
         keyframe_image_view = self.convertPILRgbToAdjustedView(intrinsics, keyframe_image, keyframe_depth)
         keyframe_image = keyframe_image_view.image
         keyframe_depth = keyframe_image_view.depth
-
-        if plot_debug:
-            depth_plot = (keyframe_depth*255/3.5).astype('uint8')
-            cv2.imshow('CV Keyframe Depth',depth_plot)
 
         # Find inverse depth
         key_inv_depth = 1/keyframe_depth
@@ -199,7 +198,7 @@ class DeepTAMTracker(object):
             print(e)
             return TrackImageResponse(0)
         
-        if plot_debug:
+        if False:
             cv2.imshow('CV Current RGB', current_image)
 
         # Convert CV image to PIL image
@@ -245,7 +244,11 @@ class DeepTAMTracker(object):
         if True:
             cv2.imshow('depth_map', output_arrs['rendered_depth'][0, 0])
             cv2.imshow('warped_img', output_arrs['warped_image'][0].transpose([1,2,0])+0.5)
-            cv2.waitKey(200)
+            cv2.imshow('depth_normalized0', output_arrs['depth_normalized0'][0, 0])
+            cv2.imshow('key_image0', output_arrs['key_image0'][0].transpose([1,2,0])+0.5)
+            cv2.imshow('current_image0', output_arrs['current_image0'][0].transpose([1,2,0])+0.5)
+            cv2.imshow('diff', np.abs(output_arrs['warped_image'][0] - output_arrs['current_image0'][0]).transpose([1,2,0]))
+            cv2.waitKey(0)
 
         # Uncomment below to find SE3 with respect to world coordinates
         #R_w = R.dot(angleaxis_to_rotation_matrix(prev_rotation))

@@ -26,7 +26,7 @@ class SiasaViewer(object):
         prop_dict_liveframe = {'cameraActor':{'property':{'Color':color_liveframe}},
                         'camera':{'Scale':0.01},
                         'path':{'Scale':0.01},
-                        'pathActor':{'property':{'Color':color_liveframe}, 'Visible':False}
+                        'pathActor':{'property':{'Color':color_liveframe}, 'Visible':True}
                        }
         prop_dict_keyframe = {'cameraActor':{'property':{'Color':color_keyframe}},
                         'camera':{'Scale':0.01},
@@ -46,8 +46,8 @@ class SiasaViewer(object):
         else:
             self.has_gt = False
         # Add subscribers for liveframes and keyframes
-        self.liveframe_sub = rospy.Subscriber("/lsd_slam_reinforced/liveframes", keyframeMsg, self.liveframe_callback)
-        self.keyframe_sub = rospy.Subscriber("/lsd_slam_reinforced/keyframes", keyframeMsg, self.keyframe_callback)
+        self.liveframe_sub = rospy.Subscriber("/lsd_slam/liveframes", keyframeMsg, self.liveframe_callback)
+        self.keyframe_sub = rospy.Subscriber("/lsd_slam/keyframes", keyframeMsg, self.keyframe_callback)
         rospy.loginfo("Initialized siasa viewer node")
         rospy.spin()
 
@@ -128,7 +128,7 @@ class SiasaViewer(object):
     def send_frame_to_siasa(self, camToWorld, cam_name, idx, cam_prop):
         t = camToWorld[4:]
         q = camToWorld[:4]
-        scale = np.linalg.norm(q).astype(np.float32)
+        scale = np.linalg.norm(q)
         q_norm = q/scale
         #R = scale * quaternion_to_rotation_matrix(q_norm.astype(np.float64))
         R = quaternion_to_rotation_matrix(q_norm.astype(np.float64))
