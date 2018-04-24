@@ -35,7 +35,7 @@ class DeepTAMTracker(object):
 
         rospy.loginfo("Configuring tensorflow session")
         gpu_options = tf.GPUOptions()
-        gpu_options.per_process_gpu_memory_fraction=0.8
+        gpu_options.per_process_gpu_memory_fraction=0.3
         self.session = tf.InteractiveSession(config=tf.ConfigProto(allow_soft_placement=True, gpu_options=gpu_options))
         self.session.run(tf.global_variables_initializer())
         self._cv_bridge = CvBridge()
@@ -121,7 +121,7 @@ class DeepTAMTracker(object):
             print("Size RGB after:", new_rgb.size)
             if not depth is None:
                 print("Size Depth after:", new_rgb_view.depth.size)
-            new_rgb.show()
+            #new_rgb.show()
 
         # Normalize Keyframe RGB image to range (-0.5, 0.5) and save as Float32
         new_rgb = np.array(new_rgb)[:, :, ::-1].transpose([2,0,1]).astype(np.float32)/255-0.5
@@ -233,20 +233,22 @@ class DeepTAMTracker(object):
         if self.debug:
             print("t = :", t)
         R = angleaxis_to_rotation_matrix(output_arrs['predict_rotation'][0])
+        q = output_arrs['predict_rotation'][0]
         if self.debug:
-            print("R = :", R)
+            #print("R = :", R)
+            print("q = :", q)
 
         T = np.vstack((np.hstack((R,t[:,np.newaxis])), np.asarray([0,0,0,1])))
         Tinv = np.linalg.inv(T)
         Rinv = Tinv[:3,:3]
         tinv = Tinv[:3,3]
 
-        if True:
-            cv2.imshow('depth_map', output_arrs['rendered_depth'][0, 0])
+        if False:
+            #cv2.imshow('depth_map', output_arrs['rendered_depth'][0, 0])
             cv2.imshow('warped_img', output_arrs['warped_image'][0].transpose([1,2,0])+0.5)
-            cv2.imshow('depth_normalized0', output_arrs['depth_normalized0'][0, 0])
-            cv2.imshow('key_image0', output_arrs['key_image0'][0].transpose([1,2,0])+0.5)
-            cv2.imshow('current_image0', output_arrs['current_image0'][0].transpose([1,2,0])+0.5)
+            #cv2.imshow('depth_normalized0', output_arrs['depth_normalized0'][0, 0])
+            #cv2.imshow('key_image0', output_arrs['key_image0'][0].transpose([1,2,0])+0.5)
+            #cv2.imshow('current_image0', output_arrs['current_image0'][0].transpose([1,2,0])+0.5)
             cv2.imshow('diff', np.abs(output_arrs['warped_image'][0] - output_arrs['current_image0'][0]).transpose([1,2,0]))
             cv2.waitKey(0)
 

@@ -18,7 +18,7 @@ class SiasaViewer(object):
     def __init__(self):
         super(SiasaViewer, self).__init__()
         rospy.init_node('siasa_viewer')
-        self.debug = True
+        self.debug = False
         #Setting properties of siasa viewer
         self.connection = siasa.Connection('tcp://localhost:51454')
         color_liveframe = colors.rgb2hex((1,0,0))
