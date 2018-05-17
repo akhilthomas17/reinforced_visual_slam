@@ -1,4 +1,5 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
+
 # Software License Agreement (BSD License)
 #
 # Copyright (c) 2013, Juergen Sturm, TUM
@@ -108,7 +109,7 @@ if __name__ == '__main__':
     ''')
     parser.add_argument('first_file', help='first text file (format: timestamp data)')
     parser.add_argument('second_file', help='second text file (format: timestamp data)')
-    parser.add_argument('output_file', help='output file for associated data')
+    parser.add_argument('out_file_name', help='output file name for associated data (No need of full path)')
     parser.add_argument('--first_only', help='only output associated lines from first file', action='store_true')
     parser.add_argument('--offset', help='time offset added to the timestamps of the second file (default: 0.0)',default=0.0)
     parser.add_argument('--max_difference', help='maximally allowed time difference for matching entries (default: 0.02)',default=0.02)
@@ -119,7 +120,17 @@ if __name__ == '__main__':
 
     matches = associate(first_list, second_list,float(args.offset),float(args.max_difference))
 
-    with open(args.output_file, 'w') as f:
+    base_path = "/misc/lmbraid19/thomasa/datasets/rgbd"
+    
+    directory_name = os.path.dirname(args.first_file).split('/')[-1]
+    directory = base_path + "/" + directory_name
+
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+
+    out_file_path = directory + "/" + args.out_file_name
+
+    with open(out_file_path, 'w') as f:
 
         if args.first_only:
             for a,b in matches:
