@@ -43,6 +43,7 @@ class NetworkV01(object):
   def __call__(self, inputs, training=False, data_format='channels_last'):
     with tf.variable_scope('depth_fusion_model'):
       rgb, sparse_depth, sparse_depth_var = inputs
+      #tf.summary.scalar('batch_size', tf.shape(rgb)[0])
       mask = create_mask(sparse_depth)
       if data_format=='channels_last':
         sparse_depth_conc = tf.concat([sparse_depth, sparse_depth_var], -1, name='sparse_concat')
@@ -63,46 +64,65 @@ class NetworkV01(object):
       return x
 
 class NetworkV02(object):
-  """ docstring for NetworkV01 """
+  """ 
+  Network architecture with sparse convolution bootstrapping for sparse depths.
+  The layers of this bootstrapping is the same as that "sparse invariant cnn" paper.
+  It is followed by concatenation with bootstrapped rgb. 
+  The concatenated tensor then goes through an encoder-decoder network
+  """
   def __init__(self):
     super(NetworkV02, self).__init__()
     self.initializer = initializer_none
 
-  def bootstrapper_block(self, x, start_dim=4, name='rgb_conv', data_format='channels_last'):
-    filters = start_dim
-    for k in [11, 9, 5]:
-      kernel_init = self.initializer()
-      x = tf.layers.conv2d(x, filters=filters, kernel_size=k, padding="same", activation=tf.nn.relu, 
-        name=name+str(k), kernel_initializer=kernel_init, data_format=data_format)
-      filters = filters*2
-    return x
+  def bootstrapper_block(self, x, start_dim=4, name='rgb_bootstrap', data_format='channels_last'):
+    with tf.variable_scope(name):
+      filters = start_dim
+      cnt = 0
+      for k in [11, 7, 5]:
+        kernel_init = self.initializer()
+        x = tf.layers.conv2d(x, filters=filters, kernel_size=k, padding="same", activation=tf.nn.relu, 
+          name=name+str(k)+str(cnt), kernel_initializer=kernel_init, data_format=data_format)
+        filters = filters*2
+        cnt += 1
+      return x
 
-  def ouput_block(self, x, data_format='channels_last'):
+  def bootstrapper_block_sparse(self, x, mask, filters=16, name='sparse_bootstrap', 
+    data_format='channels_last'):
+    with tf.variable_scope(name):
+      cnt = 0
+      for k in [11, 7, 5, 3, 3]:
+        kernel_init = self.initializer()
+        x, mask = sparse_conv2d(x, mask, kernel_size=k, num_filters=filters, 
+          name='sparse_conv'+str(k)+str(cnt), data_format=data_format, initializer=kernel_init)
+        cnt += 1
+      return x
+
+  def output_block(self, x, data_format='channels_last'):
     kernel_init = self.initializer()
     x = tf.layers.conv2d(x, filters=1, kernel_size=5, padding="same",
      activation=tf.nn.relu, kernel_initializer=kernel_init, data_format=data_format)
     return x
 
-
   def __call__(self, inputs, training=False, data_format='channels_last'):
     with tf.variable_scope('depth_fusion_model'):
       rgb, sparse_depth, sparse_depth_var = inputs
+      mask = create_mask(sparse_depth)
       if data_format=='channels_last':
-        sparse_depth_conc = tf.concat([sparse_depth, sparse_depth_var], -1)
+        sparse_depth_conc = tf.concat([sparse_depth, sparse_depth_var], -1, name='sparse_concat')
       else:
-        sparse_depth_conc = tf.concat([sparse_depth, sparse_depth_var], 1)
+        sparse_depth_conc = tf.concat([sparse_depth, sparse_depth_var], 1, name='sparse_concat')
       x1 = self.bootstrapper_block(rgb, data_format=data_format)
-      x2 = self.bootstrapper_block(sparse_depth_conc, name='sparse_conv', data_format=data_format)
+      x2 = self.bootstrapper_block_sparse(sparse_depth_conc, mask, data_format=data_format)
       if data_format=='channels_last':
         x = tf.concat([x1, x2], -1)
         #x = tf.keras.layers.concatenate( [x1,x2] )
       else:
         x = tf.concat([x1, x2], 1)
-      x = encoder_decoder_block(x, input_dim=32, num=5, initializer=self.initializer, 
+      x = encoder_decoder_block(x, input_dim=32, num=4, initializer=self.initializer, 
         data_format=data_format)
       if training:
         x = self.dropout(x)
-      x = self.ouput_block(x, data_format=data_format)
+      x = self.output_block(x, data_format=data_format)
       return x
 
 ##########################
