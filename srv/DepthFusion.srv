@@ -1,0 +1,6 @@
+float32 scale
+sensor_msgs/Image rgb_image
+float32[] idepth
+float32[] idepth_var
+---
+sensor_msgs/Image depthmap

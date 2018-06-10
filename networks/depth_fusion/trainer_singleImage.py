@@ -15,10 +15,7 @@ from net.my_losses import *
 from net.my_models import *
 
 feature_names = [
-  'rgb',
-  'sparseInverseDepth',
-  'sparseInverseDepthVariance'
-]
+  'rgb']
 
 FLAGS = {
   'multi_gpu': False,
@@ -26,7 +23,6 @@ FLAGS = {
   'prefetch_buffer_size': 12,
   'num_parallel_calls': 12,
   'num_epochs':50,
-  'learning_rate':0.0004,
   'data_format': "channels_first",
   'epochs_bw_eval':1
 }
@@ -34,76 +30,54 @@ FLAGS = {
 augment_props = {
   'max_contrast_factor': 1.1,
   'max_brightness_factor': 0.05,
-  'max_scale_factor': 1.2
 }
 
 def parse_n_load(filename_line, basepath, data_format=FLAGS['data_format'], augment=True, width=320, height=240):
   filenames = tf.decode_csv(filename_line, [[''], [''], [''], ['']])
   images = []
-  for cnt in range(4):
+  for cnt in range(2):
       image_string = tf.read_file(basepath +'/'+ filenames[cnt])
-      if cnt < 2:
-        if cnt == 0:
-          image_decoded = tf.image.decode_png(image_string, dtype=tf.uint16)
-          image_decoded = tf.reshape(image_decoded, [480, 640, 1])
-          image_decoded = tf.cast(image_decoded, tf.float32)
-          image_decoded = tf.scalar_mul(0.0002, image_decoded)
-          # converting depth to idepth but keeping NaN's
-          image_decoded = invert_finite_depth(image_decoded)
-        else:
-          image_decoded = tf.image.decode_png(image_string)
-          image_decoded = tf.reshape(image_decoded, [480, 640, 3])
-          image_decoded = tf.cast(image_decoded, tf.float32)
-          # converting rgb to [0,1] from [0,255]
-          image_decoded = tf.divide(image_decoded, 255)
-      else:
-        image_decoded = tf.decode_raw(image_string, tf.half)
+      if cnt == 0:
+        image_decoded = tf.image.decode_png(image_string, dtype=tf.uint16)
         image_decoded = tf.reshape(image_decoded, [480, 640, 1])
         image_decoded = tf.cast(image_decoded, tf.float32)
-        image_decoded = replace_nonfinite(image_decoded)
+        image_decoded = tf.scalar_mul(0.0002, image_decoded)
+        # converting depth to idepth but keeping NaN's
+        image_decoded = invert_finite_depth(image_decoded)
+      else:
+        image_decoded = tf.image.decode_png(image_string)
+        image_decoded = tf.reshape(image_decoded, [480, 640, 3])
+        image_decoded = tf.cast(image_decoded, tf.float32)
+        # converting rgb to [0,1] from [0,255]
+        image_decoded = tf.divide(image_decoded, 255)
 
       image_decoded = tf.image.resize_images(image_decoded, [height, width], 
-        align_corners=True, method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
+        align_corners=True)
       if data_format == 'channels_first':
         image_decoded = tf.transpose(image_decoded,[2,0,1])
       images.append(image_decoded)       
   idepth_gt_clean = images[0]
-  del images[0]
+  rgb = images[1]
   if augment:
-    images, idepth_gt_clean = random_augmentations(images, idepth_gt_clean)
-  d = dict(zip(feature_names, images)), idepth_gt_clean
+    rgb, idepth_gt_clean = random_augmentations(rgb, idepth_gt_clean)
+  d = dict(zip(feature_names, [rgb])), idepth_gt_clean
   return d
 
-def random_augmentations(images, idepth_gt):
+def random_augmentations(rgb, idepth_gt):
   rand_nums = np.random.rand(2)
   rand_bools = rand_nums < 0.3
-  rand_scale = np.random.uniform(1./augment_props['max_scale_factor'],
-    augment_props['max_scale_factor'])
-  # rand_bools = np.random.choice([True, False], 2)
-  
   # brightness and contrast transform only for rgb
-  images[0] = tf.image.random_brightness(images[0], max_delta=augment_props['max_brightness_factor'])
-  images[0] = tf.image.random_contrast(images[0], upper=augment_props['max_contrast_factor'], 
+  rgb = tf.image.random_brightness(rgb, max_delta=augment_props['max_brightness_factor'])
+  rgb = tf.image.random_contrast(rgb, upper=augment_props['max_contrast_factor'], 
       lower=1./augment_props['max_contrast_factor'])
-
-  # random scale operation for sparse depth inputs
-  for ii in [1,2]:
-    images[ii] = tf.scalar_mul(rand_scale, images[ii])
-
   # input augmentations (for all inputs)
-  for ii in range(len(images)):
-    # common augmentations
-    if rand_bools[0]:
-      images[ii] = tf.image.flip_left_right(images[ii])
-    if rand_bools[1]:
-      images[ii] = tf.image.flip_up_down(images[ii])
-  
-  # modifiying gt for mirroring
   if rand_bools[0]:
+    rgb = tf.image.flip_left_right(rgb)
     idepth_gt = tf.image.flip_left_right(idepth_gt)
   if rand_bools[1]:
+    rgb = tf.image.flip_up_down(rgb)
     idepth_gt = tf.image.flip_up_down(idepth_gt)
-  return(images, idepth_gt)
+  return(rgb, idepth_gt)
 
 
 def dataset_shuffler(training_file):
@@ -214,12 +188,8 @@ def run_trainer(model_fn, model_dir_name, training_steps, config):
     #break
   # Export the model for later use
   rgb = tf.placeholder(tf.float32, [1, 3, 240, 320])
-  idepth = tf.placeholder(tf.float32, [1, 1, 240, 320])
-  idepthVar = tf.placeholder(tf.float32, [1, 1, 240, 320])
   export_input_fn = tf.estimator.export.build_raw_serving_input_receiver_fn({
      'rgb': rgb,
-     'sparseInverseDepth': idepth,
-     'sparseInverseDepthVariance': idepthVar
   })
   lsd_depth_fuser.export_savedmodel(os.path.join(model_dir, "exported_model"), 
     export_input_fn)
@@ -248,12 +218,8 @@ def main():
 
   print("Number of training steps (until eval):", num_steps)
   ####
-  model_fn = model_fn_NetV04Res_LossL1SigL1ExpResL1
-  #model_fn = model_fn_NetV03Res_LossL1SigL1ExpResL1
-  #model_fn = model_fn_Netv3_LossL1SigL1  
-  #model_fn = model_fn_L2_loss_clean_down
+  model_fn = modelfn_NetV0Res_LossL1SigL1ExpResL1
   ####
-
   if args.limit_gpu:
     config = tf.ConfigProto()
     config.gpu_options.per_process_gpu_memory_fraction = 0.25

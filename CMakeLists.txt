@@ -63,6 +63,7 @@ add_service_files(
   TrackImage.srv
   TrackerStatus.srv
   PredictDepthmap.srv
+  DepthFusion.srv
 )
 
 ## Generate actions in the 'action' folder

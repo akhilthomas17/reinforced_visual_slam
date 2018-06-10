@@ -1,6 +1,187 @@
 #!/usr/bin/env python3
-
+from __future__ import division
 import tensorflow as tf
+
+######################
+# Networks with residual prediction
+######################
+
+class NetworkV04Res(object):
+  """ 
+    Network architecture with sparse convolution bootstrapping for sparse depths.
+    It is followed by concatenation with bootstrapped rgb. 
+    The concatenated tensor then goes through an encoder-decoder network
+    All convolutions are done with filter size  = 3.
+  """
+  def __init__(self):
+    super(NetworkV04Res, self).__init__()
+    self.initializer = initializer_none
+
+  def bootstrapper_block_rgb(self, x, start_dim=8, num=2, name='rgb_bootstrap', data_format='channels_first'):
+    with tf.variable_scope(name):
+      filters = start_dim
+      for ii in range(num):
+        kernel_init = self.initializer()
+        x = tf.layers.conv2d(x, filters=filters, kernel_size=3, padding="same", activation=tf.nn.relu, 
+          name=name+str(ii), kernel_initializer=kernel_init, data_format=data_format)
+        x = tf.layers.conv2d(x, filters=filters, kernel_size=3, padding="same", activation=tf.nn.relu, 
+          name=name+str(ii)+'.1', kernel_initializer=kernel_init, data_format=data_format)
+        x = tf.layers.max_pooling2d(x, pool_size=2, strides=2, padding="same", data_format=data_format)
+        filters = filters*2
+      return x
+
+  def bootstrapper_block_sparse(self, x, mask, start_dim=8, num=2, name='sparse_bootstrap', 
+    data_format='channels_first'):
+    with tf.variable_scope(name):
+      filters = start_dim
+      for ii in range(num):
+        kernel_init = self.initializer()
+        x, mask = sparse_conv2d(x, mask, kernel_size=3, num_filters=filters, 
+          name='sparse_conv'+str(ii), data_format=data_format, initializer=kernel_init)
+        x, mask = sparse_conv2d(x, mask, kernel_size=3, num_filters=filters, 
+          name='sparse_conv'+str(ii)+'.1', data_format=data_format, initializer=kernel_init)
+        x = tf.layers.max_pooling2d(x, pool_size=2, strides=2, padding="same", data_format=data_format)
+        mask = tf.layers.max_pooling2d(mask, pool_size=2, strides=2, padding="same", data_format=data_format)
+        filters = filters*2
+      return x
+
+  def output_block(self, x, input_dim=8, data_format='channels_first', name='ouput_conv'):
+    kernel_init = self.initializer()
+    filters = input_dim // 2
+    x = tf.layers.conv2d(x, filters=filters, kernel_size=3, padding="same", name=name,
+     activation=tf.nn.relu, kernel_initializer=kernel_init, data_format=data_format)
+    x = tf.layers.conv2d(x, filters=2, kernel_size=3, padding="same", name=name+'.1',
+     activation=tf.nn.relu, kernel_initializer=kernel_init, data_format=data_format)
+    return x
+
+  def __call__(self, inputs, training=False, data_format='channels_first'):
+    with tf.variable_scope('depth_fusion_model'):
+      rgb, sparse_depth, sparse_depth_var = inputs
+      mask = create_mask(sparse_depth)
+      if data_format=='channels_last':
+        sparse_depth_conc = tf.concat([sparse_depth, sparse_depth_var], -1, name='sparse_concat')
+        mask_nhwc = mask
+      else:
+        sparse_depth_conc = tf.concat([sparse_depth, sparse_depth_var], 1, name='sparse_concat')
+        mask_nhwc = tf.transpose(mask, [0,2,3,1])
+      tf.summary.image('sparse_conv_mask', mask_nhwc, max_outputs=1)
+      x1 = self.bootstrapper_block_rgb(rgb, data_format=data_format)
+      x2 = self.bootstrapper_block_sparse(sparse_depth_conc, mask, data_format=data_format)
+      if data_format=='channels_last':
+        x = tf.concat([x1, x2], -1)
+      else:
+        x = tf.concat([x1, x2], 1)
+      x = encoder_block(x, input_dim=32, num=2, data_format=data_format, initializer=self.initializer)
+      x = tf.layers.conv2d(x, filters=128, kernel_size=3, activation=tf.nn.relu, 
+      name='conv_low', kernel_initializer=self.initializer(), padding="same", data_format=data_format)
+      x = decoder_block_small(x, input_dim=128, num=4, data_format=data_format, initializer=self.initializer)
+      x = self.output_block(x, data_format=data_format)
+      return x
+
+class NetworkV0Res(object):
+  """ 
+  Network architecture for single image depth prediction.
+  All convolutions are done with filter size  = 3.
+  """
+  def __init__(self):
+    super(NetworkV0Res, self).__init__()
+    self.initializer = initializer_none
+
+  def output_block(self, x, input_dim=8, data_format='channels_first', name='ouput_conv'):
+    kernel_init = self.initializer()
+    filters = input_dim // 2
+    x = tf.layers.conv2d(x, filters=filters, kernel_size=3, padding="same", name=name,
+     activation=tf.nn.relu, kernel_initializer=kernel_init, data_format=data_format)
+    x = tf.layers.conv2d(x, filters=2, kernel_size=3, padding="same", name=name+'.1',
+     activation=tf.nn.relu, kernel_initializer=kernel_init, data_format=data_format)
+    return x
+
+  def __call__(self, rgb, training=False, data_format='channels_first'):
+    with tf.variable_scope('single_image_depth_prediction_model'):
+      x = encoder_block(rgb, input_dim=4, num=4, data_format=data_format, initializer=self.initializer)
+      x = tf.layers.conv2d(x, filters=64, kernel_size=3, activation=tf.nn.relu, 
+      name='conv_low', kernel_initializer=self.initializer(), padding="same", data_format=data_format)
+      x = decoder_block(x, input_dim=64, num=4, data_format=data_format, initializer=self.initializer)
+      x = self.output_block(x, data_format=data_format)
+      return x
+
+class NetworkV03Res(object):
+  """ 
+  Network architecture with sparse convolution bootstrapping for sparse depths.
+  It is followed by concatenation with bootstrapped rgb. 
+  The concatenated tensor then goes through an encoder-decoder network
+  All convolutions are done with filter size  = 3.
+  """
+  def __init__(self):
+    super(NetworkV03Res, self).__init__()
+    self.initializer = initializer_none
+
+  def bootstrapper_block_rgb(self, x, start_dim=8, num=2, name='rgb_bootstrap', data_format='channels_first'):
+    with tf.variable_scope(name):
+      filters = start_dim
+      for ii in range(num):
+        kernel_init = self.initializer()
+        x = tf.layers.conv2d(x, filters=filters, kernel_size=3, padding="same", activation=tf.nn.relu, 
+          name=name+str(ii), kernel_initializer=kernel_init, data_format=data_format)
+        x = tf.layers.conv2d(x, filters=filters, kernel_size=3, padding="same", activation=tf.nn.relu, 
+          name=name+str(ii)+'.1', kernel_initializer=kernel_init, data_format=data_format)
+        x = tf.layers.max_pooling2d(x, pool_size=2, strides=2, padding="same", data_format=data_format)
+        filters = filters*2
+      return x
+
+  def bootstrapper_block_sparse(self, x, mask, start_dim=8, num=2, name='sparse_bootstrap', 
+    data_format='channels_first'):
+    with tf.variable_scope(name):
+      filters = start_dim
+      for ii in range(num):
+        kernel_init = self.initializer()
+        x, mask = sparse_conv2d(x, mask, kernel_size=3, num_filters=filters, 
+          name='sparse_conv'+str(ii), data_format=data_format, initializer=kernel_init)
+        x, mask = sparse_conv2d(x, mask, kernel_size=3, num_filters=filters, 
+          name='sparse_conv'+str(ii)+'.1', data_format=data_format, initializer=kernel_init)
+        x = tf.layers.max_pooling2d(x, pool_size=2, strides=2, padding="same", data_format=data_format)
+        mask = tf.layers.max_pooling2d(mask, pool_size=2, strides=2, padding="same", data_format=data_format)
+        filters = filters*2
+      return x
+
+  def output_block(self, x, input_dim=8, data_format='channels_first', name='ouput_conv'):
+    kernel_init = self.initializer()
+    filters = input_dim // 2
+    x = tf.layers.conv2d(x, filters=filters, kernel_size=3, padding="same", name=name,
+     activation=tf.nn.relu, kernel_initializer=kernel_init, data_format=data_format)
+    x = tf.layers.conv2d(x, filters=2, kernel_size=3, padding="same", name=name+'.1',
+     activation=tf.nn.relu, kernel_initializer=kernel_init, data_format=data_format)
+    return x
+
+  def __call__(self, inputs, training=False, data_format='channels_first'):
+    with tf.variable_scope('depth_fusion_model'):
+      rgb, sparse_depth, sparse_depth_var = inputs
+      mask = create_mask(sparse_depth)
+      if data_format=='channels_last':
+        sparse_depth_conc = tf.concat([sparse_depth, sparse_depth_var], -1, name='sparse_concat')
+        mask_nhwc = mask
+      else:
+        sparse_depth_conc = tf.concat([sparse_depth, sparse_depth_var], 1, name='sparse_concat')
+        mask_nhwc = tf.transpose(mask, [0,2,3,1])
+      tf.summary.image('sparse_conv_mask', mask_nhwc, max_outputs=1)
+      x1 = self.bootstrapper_block_rgb(rgb, data_format=data_format)
+      x2 = self.bootstrapper_block_sparse(sparse_depth_conc, mask, data_format=data_format)
+      if data_format=='channels_last':
+        x = tf.concat([x1, x2], -1)
+      else:
+        x = tf.concat([x1, x2], 1)
+      x = encoder_block(x, input_dim=32, num=2, data_format=data_format, initializer=self.initializer)
+      x = tf.layers.conv2d(x, filters=128, kernel_size=3, activation=tf.nn.relu, 
+      name='conv_low', kernel_initializer=self.initializer(), padding="same", data_format=data_format)
+      x = decoder_block(x, input_dim=128, num=4, data_format=data_format, initializer=self.initializer)
+      x = self.output_block(x, data_format=data_format)
+      return x
+
+
+
+######################
+# Networks without error prediction
+######################
 
 class NetworkV01(object):
   """ 
@@ -47,8 +228,11 @@ class NetworkV01(object):
       mask = create_mask(sparse_depth)
       if data_format=='channels_last':
         sparse_depth_conc = tf.concat([sparse_depth, sparse_depth_var], -1, name='sparse_concat')
+        mask_nhwc = mask
       else:
         sparse_depth_conc = tf.concat([sparse_depth, sparse_depth_var], 1, name='sparse_concat')
+        mask_nhwc = tf.transpose(mask, [0,2,3,1])
+      tf.summary.image('sparse conv mask', mask_nhwc, max_outputs=1)
       x1 = self.bootstrapper_block(rgb, data_format=data_format)
       x2 = self.bootstrapper_block_sparse(sparse_depth_conc, mask, data_format=data_format)
       if data_format=='channels_last':
@@ -109,8 +293,11 @@ class NetworkV02(object):
       mask = create_mask(sparse_depth)
       if data_format=='channels_last':
         sparse_depth_conc = tf.concat([sparse_depth, sparse_depth_var], -1, name='sparse_concat')
+        mask_nhwc = mask
       else:
         sparse_depth_conc = tf.concat([sparse_depth, sparse_depth_var], 1, name='sparse_concat')
+        mask_nhwc = tf.transpose(mask, [0,2,3,1])
+      tf.summary.image('sparse conv mask', mask_nhwc, max_outputs=1)
       x1 = self.bootstrapper_block(rgb, data_format=data_format)
       x2 = self.bootstrapper_block_sparse(sparse_depth_conc, mask, data_format=data_format)
       if data_format=='channels_last':
@@ -122,6 +309,78 @@ class NetworkV02(object):
         data_format=data_format)
       if training:
         x = self.dropout(x)
+      x = self.output_block(x, data_format=data_format)
+      return x
+
+class NetworkV03(object):
+  """ 
+  Network architecture with sparse convolution bootstrapping for sparse depths.
+  It is followed by concatenation with bootstrapped rgb. 
+  The concatenated tensor then goes through an encoder-decoder network
+  All convolutions are done with filter size  = 3.
+  """
+  def __init__(self):
+    super(NetworkV03, self).__init__()
+    self.initializer = initializer_none
+
+  def bootstrapper_block_rgb(self, x, start_dim=8, num=2, name='rgb_bootstrap', data_format='channels_first'):
+    with tf.variable_scope(name):
+      filters = start_dim
+      for ii in range(num):
+        kernel_init = self.initializer()
+        x = tf.layers.conv2d(x, filters=filters, kernel_size=3, padding="same", activation=tf.nn.relu, 
+          name=name+str(ii), kernel_initializer=kernel_init, data_format=data_format)
+        x = tf.layers.conv2d(x, filters=filters, kernel_size=3, padding="same", activation=tf.nn.relu, 
+          name=name+str(ii)+'.1', kernel_initializer=kernel_init, data_format=data_format)
+        x = tf.layers.max_pooling2d(x, pool_size=2, strides=2, padding="same", data_format=data_format)
+        filters = filters*2
+      return x
+
+  def bootstrapper_block_sparse(self, x, mask, start_dim=8, num=2, name='sparse_bootstrap', 
+    data_format='channels_first'):
+    with tf.variable_scope(name):
+      filters = start_dim
+      for ii in range(num):
+        kernel_init = self.initializer()
+        x, mask = sparse_conv2d(x, mask, kernel_size=3, num_filters=filters, 
+          name='sparse_conv'+str(ii), data_format=data_format, initializer=kernel_init)
+        x, mask = sparse_conv2d(x, mask, kernel_size=3, num_filters=filters, 
+          name='sparse_conv'+str(ii)+'.1', data_format=data_format, initializer=kernel_init)
+        x = tf.layers.max_pooling2d(x, pool_size=2, strides=2, padding="same", data_format=data_format)
+        mask = tf.layers.max_pooling2d(mask, pool_size=2, strides=2, padding="same", data_format=data_format)
+        filters = filters*2
+      return x
+
+  def output_block(self, x, input_dim=8, data_format='channels_first', name='ouput_conv'):
+    kernel_init = self.initializer()
+    filters = input_dim // 2
+    x = tf.layers.conv2d(x, filters=filters, kernel_size=3, padding="same", name=name,
+     activation=tf.nn.relu, kernel_initializer=kernel_init, data_format=data_format)
+    x = tf.layers.conv2d(x, filters=1, kernel_size=3, padding="same", name=name+'.1',
+     activation=tf.nn.relu, kernel_initializer=kernel_init, data_format=data_format)
+    return x
+
+  def __call__(self, inputs, training=False, data_format='channels_first'):
+    with tf.variable_scope('depth_fusion_model'):
+      rgb, sparse_depth, sparse_depth_var = inputs
+      mask = create_mask(sparse_depth)
+      if data_format=='channels_last':
+        sparse_depth_conc = tf.concat([sparse_depth, sparse_depth_var], -1, name='sparse_concat')
+        mask_nhwc = mask
+      else:
+        sparse_depth_conc = tf.concat([sparse_depth, sparse_depth_var], 1, name='sparse_concat')
+        mask_nhwc = tf.transpose(mask, [0,2,3,1])
+      tf.summary.image('sparse_conv_mask', mask_nhwc, max_outputs=1)
+      x1 = self.bootstrapper_block_rgb(rgb, data_format=data_format)
+      x2 = self.bootstrapper_block_sparse(sparse_depth_conc, mask, data_format=data_format)
+      if data_format=='channels_last':
+        x = tf.concat([x1, x2], -1)
+      else:
+        x = tf.concat([x1, x2], 1)
+      x = encoder_block(x, input_dim=32, num=2, data_format=data_format, initializer=self.initializer)
+      x = tf.layers.conv2d(x, filters=128, kernel_size=3, activation=tf.nn.relu, 
+      name='conv_low', kernel_initializer=self.initializer(), padding="same", data_format=data_format)
+      x = decoder_block(x, input_dim=128, num=4, data_format=data_format, initializer=self.initializer)
       x = self.output_block(x, data_format=data_format)
       return x
 
@@ -176,6 +435,43 @@ def sparse_conv2d(x, mask, kernel_size, num_filters, stride=1, name='sparse_conv
 def create_mask(x):
   return tf.to_float(tf.greater(x, 0.))
 
+def decoder_block_small(x, input_dim=256, num=4, k=3, basename='comb_dec_', initializer=initializer_none,
+  data_format='channels_first'):
+  filters = input_dim
+  for ii in range(num):
+    name = basename +  str(ii)
+    kernel_init = initializer()
+    filters = int(filters/2)
+    x = tf.layers.conv2d_transpose(x, filters=filters, kernel_size=k, activation=tf.nn.relu, 
+      name=name, kernel_initializer=kernel_init, strides=2, padding="same", data_format=data_format)
+  return x
+
+def decoder_block(x, input_dim=256, num=4, k=3, basename='comb_dec_', initializer=initializer_none,
+  data_format='channels_first'):
+  filters = input_dim
+  for ii in range(num):
+    name = basename +  str(ii)
+    kernel_init = initializer()
+    filters = int(filters/2)
+    x = tf.layers.conv2d_transpose(x, filters=filters, kernel_size=k, activation=tf.nn.relu, 
+      name=name, kernel_initializer=kernel_init, strides=1, padding="same", data_format=data_format)
+    x = tf.layers.conv2d_transpose(x, filters=filters, kernel_size=k, activation=tf.nn.relu, 
+      name=name+'.1', kernel_initializer=kernel_init, strides=2, padding="same", data_format=data_format)
+  return x
+
+def encoder_block(x, input_dim=16, num=2, k=3, basename='comb_enc_', initializer=initializer_none,
+  data_format='channels_first'):
+  filters = input_dim
+  for ii in range(num):
+    filters = filters*2
+    name = basename +  str(ii)
+    kernel_init = initializer()
+    x = tf.layers.conv2d(x, filters=filters, kernel_size=k, activation=tf.nn.relu, 
+      name=name, kernel_initializer=kernel_init, padding="same", data_format=data_format)
+    x = tf.layers.conv2d(x, filters=filters, kernel_size=k, activation=tf.nn.relu, 
+      name=name+'.1', kernel_initializer=kernel_init, padding="same", data_format=data_format)
+    x = tf.layers.max_pooling2d(x, pool_size=2, strides=2, padding="same", data_format=data_format)
+  return x
 
 def encoder_decoder_block(x, input_dim=16, num=6, basename='comb', initializer=initializer_normal, 
   data_format='channels_last'):
@@ -204,25 +500,4 @@ def encoder_decoder_block(x, input_dim=16, num=6, basename='comb', initializer=i
     filters = int(filters/2)
     x = tf.layers.conv2d_transpose(x, filters=filters, kernel_size=5, activation=tf.nn.relu, 
       name=name, kernel_initializer=kernel_init, strides=2, padding="same", data_format=data_format)
-  return x
-
-def encoder_decoder_block_trial(x, inp_dim=16, num=6, basename='comb', initializer=initializer_normal):
-  filters = inp_dim
-  # encoder networks
-  for ii in range(num):
-    filters = filters*2
-    name = basename + '_enc' +  str(ii)
-    kernel_init = initializer()
-    x = tf.layers.conv2d(x, filters=filters, kernel_size=5, padding="same", 
-      activation=tf.nn.relu, name=name, kernel_initializer=kernel_init)
-    x = tf.layers.max_pooling2d(x, pool_size=2, strides=2)
-  # decoder network
-  for ii in range(num):
-    name = basename + '_dec' +  str(ii)
-    upsample = tf.keras.layers.UpSampling2D(size=2)
-    x = upsample(x)
-    kernel_init = initializer()
-    x = tf.layers.conv2d(x, filters=filters, kernel_size=5, padding="same", 
-      activation=tf.nn.relu, name=name, kernel_initializer=kernel_init)
-    filters = filters/2
   return x

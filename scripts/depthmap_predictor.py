@@ -4,7 +4,12 @@ from reinforced_visual_slam.srv import *
 import rospy
 
 import sys
+
+# for cv_bridge
 sys.path.insert(0, '/misc/lmbraid19/thomasa/catkin_ws/install/lib/python3/dist-packages')
+#for cv2
+sys.path.insert(0,'/misc/software/opencv/opencv-3.2.0_cuda8_with_contrib-x86_64-gcc5.4.0/lib/python3.5/dist-packages')
+
 
 from cv_bridge import CvBridge
 from std_msgs.msg import Header
@@ -26,7 +31,7 @@ class DepthmapPredictor(object):
         self._cv_bridge_depth = CvBridge()
         rospy.loginfo("Opening tensorflow session")
         gpu_options = tf.GPUOptions()
-        gpu_options.per_process_gpu_memory_fraction=0.45
+        gpu_options.per_process_gpu_memory_fraction=0.3
         self.session = tf.InteractiveSession(config=tf.ConfigProto(allow_soft_placement=True, gpu_options=gpu_options))
 
     def configure(self, network_module_path, network_checkpoint, width=320, height=240):

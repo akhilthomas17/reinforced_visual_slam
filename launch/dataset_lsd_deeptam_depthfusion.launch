@@ -1,0 +1,80 @@
+<launch>
+    
+    <node name="deepTAM_tracker" pkg="reinforced_visual_slam" type="deepTAM_tracker.py" respawn="false" output="screen"/>
+
+    <node name="depthmap_fuser" pkg="reinforced_visual_slam" type="depthmap_fuser.py" respawn="false" output="screen"/>
+
+    <node name="depthmap_predictor" pkg="reinforced_visual_slam" type="depthmap_predictor.py" respawn="false" output="screen"/>
+
+    <node name="lsd_node_reinforced_dataset" pkg="lsd_slam_core" type="deepTAM_dataset_slam" respawn="true" output="screen" launch-prefix="xterm -e gdb --args">
+
+        <param name="hz" value="0" />
+        <param name="calib" value="/misc/lmbraid19/thomasa/rosbuild_ws/packages/lsd_slam/lsd_slam_core/calib/OpenCV_example_calib.cfg"/>
+        <param name="files" value="/misc/lmbraid19/thomasa/datasets/rgbd/rgbd_dataset_freiburg1_teddy/rgb_depth_associated.txt"/>
+	    
+        <param name="predictDepth" value="true"/>
+        <param name="doSLAM" value="false"/>
+        <param name="useGtDepth" value="false"/>
+        <param name="gtBootstrap" value="true"/>
+
+        <!-- Values to control keyframe generation frequency:
+                KFDistWeight = maximum distance between 2 KFs
+                KFUsageWeight = maximum angle between 2 KFs -->
+        <param name="KFDistWeight" value="0.15"/>
+        <param name="KFUsageWeight" value="5"/>
+        
+        <!-- Values to control sparsity of depth map and predicted depth variance -->
+        <param name="minUseGrad" value="3"/>
+        <param name="/Debug/freeDebugParam1" value="4"/>
+        <!--
+        
+        <param name="/Debug/freeDebugParam1" value="0.1"/>
+        -->
+        <param name="/Debug/plotStereoImages" value="false"/>
+        <param name="/Debug/plotDepthFusion" value="true"/>
+
+        <remap from="/lsd_slam/debug" to="/lsd_slam_reinforced/debug"/>
+        <remap from="/lsd_slam/graph" to="/lsd_slam_reinforced/graph"/>
+        <remap from="/lsd_slam/keyframes" to="/lsd_slam_reinforced/keyframes"/>
+        <remap from="/lsd_slam/liveframes" to="/lsd_slam_reinforced/liveframes"/>
+    </node>
+
+    <node name="siasa_viewer" pkg="reinforced_visual_slam" type="siasa_viewer.py" respawn="false" output="screen">
+        <remap from="/lsd_slam/liveframes" to="/lsd_slam_reinforced/liveframes"/>
+        <param name="gt" value="/misc/lmbraid19/thomasa/datasets/rgbd/rgbd_dataset_freiburg1_teddy/groundtruth_associated.txt"/>
+    <!--
+        <remap from="lsd_slam/keyframes" to="/lsd_slam_reinforced/keyframes"/>
+    -->
+    </node>
+
+    <node name="lsd_node_reinforced_viewer" pkg="lsd_slam_viewer" type="viewer" respawn="false" output="screen">
+        <remap from="/lsd_slam/debug" to="/lsd_slam_reinforced/debug"/>
+        <remap from="/lsd_slam/graph" to="/lsd_slam_reinforced/graph"/>
+        <remap from="/lsd_slam/keyframes" to="/lsd_slam_reinforced/keyframes"/>
+        <remap from="/lsd_slam/liveframes" to="/lsd_slam_reinforced/liveframes"/>
+    </node>
+
+
+
+   <!--
+    
+-->
+
+<!--
+
+    <node name="lsd_viewer" pkg="lsd_slam_viewer" type="viewer" respawn="true" output="screen"/>
+
+    <node name="deepTAM_tracker2" pkg="reinforced_visual_slam" type="deepTAM_tracker.py" respawn="true" output="screen">
+        <remap from="track_image" to="track_image_2"/>
+    </node>
+
+    <node name="lsd_node_SE3_dataset" pkg="lsd_slam_core" type="deepTAM_SE3_dataset_slam" respawn="true" output="screen">
+        <param name="hz" value="0" />
+        <param name="calib" value="/misc/lmbraid19/thomasa/rosbuild_ws/packages/lsd_slam/lsd_slam_core/calib/OpenCV_example_calib.cfg"/>
+        <param name="files" value="/misc/lmbraid17/zhouh/data/rgbd_tum/rgbd_dataset_freiburg1_teddy/rgb.txt"/>
+        <remap from="track_image" to="track_image_2"/>
+    </node>
+launch-prefix="xterm -e gdb - - args"
+-->
+
+</launch>

@@ -3,6 +3,12 @@
 from reinforced_visual_slam.srv import *
 import rospy
 
+# for cv_bridge
+sys.path.insert(0, '/misc/lmbraid19/thomasa/catkin_ws/install/lib/python3/dist-packages')
+#for cv2
+sys.path.insert(0,'/misc/software/opencv/opencv-3.2.0_cuda8_with_contrib-x86_64-gcc5.4.0/lib/python3.5/dist-packages')
+
+
 from cv_bridge import CvBridge
 import cv2
 from PIL import Image
@@ -35,7 +41,7 @@ class DeepTAMTracker(object):
 
         rospy.loginfo("Configuring tensorflow session")
         gpu_options = tf.GPUOptions()
-        gpu_options.per_process_gpu_memory_fraction=0.3
+        gpu_options.per_process_gpu_memory_fraction=0.2
         self.session = tf.InteractiveSession(config=tf.ConfigProto(allow_soft_placement=True, gpu_options=gpu_options))
         self.session.run(tf.global_variables_initializer())
         self._cv_bridge = CvBridge()
