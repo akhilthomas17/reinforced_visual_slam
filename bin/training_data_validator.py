@@ -2,7 +2,11 @@
 import os
 import sys
 import argparse
+
+#for cv2
+sys.path.insert(0,'/misc/software/opencv/opencv-3.2.0_cuda8_with_contrib-x86_64-gcc5.4.0/lib/python3.5/dist-packages')
 import cv2
+
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import colors

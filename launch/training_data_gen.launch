@@ -1,5 +1,6 @@
 <launch>
-    <node name="lsd_node_training_data_gen" pkg="lsd_slam_core" type="depth_training_data_gen" respawn="false" output="screen">
+    <node name="lsd_node_training_data_gen" pkg="lsd_slam_core" type="depth_training_data_gen" respawn="false" output="screen"
+    launch-prefix="xterm -e gdb --args">
 
 	    <param name="hz" value="0" />
 	    <param name="calib" value="/misc/lmbraid19/thomasa/rosbuild_ws/packages/lsd_slam/lsd_slam_core/calib/OpenCV_example_calib.cfg" />
@@ -8,6 +9,10 @@
         <param name="start_indx" value="600" />
         <param name="len_traj" value="200" />
 
+        <param name="freeDebugParam1" value="0.0001" />
+        <param name="displayDepthMap" value="false" />
+        <param name="predictDepth" value="false" />
+        <param name="writeDepthToFile" value="true" />
 	    <param name="doSLAM" value="true"/>
     
     </node>

@@ -248,10 +248,11 @@ def main():
 
   print("Number of training steps (until eval):", num_steps)
   ####
-  model_fn = model_fn_NetV04Res_LossL1SigL1ExpResL1
+  model_fn = model_fn_NetV04_LossL1SigL1
+  #model_fn = model_fn_NetV04Res_LossL1SigL1ExpResL1
   #model_fn = model_fn_NetV03Res_LossL1SigL1ExpResL1
   #model_fn = model_fn_Netv3_LossL1SigL1  
-  #model_fn = model_fn_L2_loss_clean_down
+  #model_fn = model_fn_Netv2_LossL1SigL1_down
   ####
 
   if args.limit_gpu:

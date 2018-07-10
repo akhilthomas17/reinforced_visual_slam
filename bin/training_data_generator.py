@@ -17,6 +17,7 @@ def gen_lsd_depth_training_data(dataset_loc, len_traj=200, keyframe_rate = 10, p
     bin_loc = "rosrun lsd_slam_core depth_training_data_gen"
     hz = "0"
     doSlam = "true"
+    KFDistWeight = 7
     
     # params that may be changed for different datasets
     # uncomment below for tum-fr1
@@ -56,13 +57,13 @@ def gen_lsd_depth_training_data(dataset_loc, len_traj=200, keyframe_rate = 10, p
     process_list= []
     args_prefix = (bin_loc + " _calib:=" + calib_file +" _files:=" + dataset_loc + " _basename:=" + basename +
                    " _hz:=" + hz + " _doSlam:=" + doSlam + " _len_traj:=" + str(len_traj) + " _minUseGrad:=" 
-                   + minUseGrad + " _KFUsageWeight:=20 _KFDistWeight:=20" + " _start_indx:=")
+                   + minUseGrad + " _KFUsageWeight:=3 _KFDistWeight:=" + str(KFDistWeight) + " _start_indx:=")
     node_name_remap = " /LSD_SLAM_TRAIN_DATA_GEN:=/LSDDepthtraining"
     itr_num = " _itr_num:="
 
     # running roscore
-    #command = "roscore"
-    #popen = subprocess.Popen(command, shell=True)
+    command = "roscore"
+    popen = subprocess.Popen(command, shell=True)
 
     for ii in range(itrn_max):
         start_indx = start_indx_array[ii]

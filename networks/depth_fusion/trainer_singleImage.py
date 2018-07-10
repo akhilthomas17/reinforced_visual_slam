@@ -24,7 +24,8 @@ FLAGS = {
   'num_parallel_calls': 12,
   'num_epochs':50,
   'data_format': "channels_first",
-  'epochs_bw_eval':1
+  'epochs_bw_eval':1,
+  'downsample': False
 }
 
 augment_props = {
@@ -50,9 +51,9 @@ def parse_n_load(filename_line, basepath, data_format=FLAGS['data_format'], augm
         image_decoded = tf.cast(image_decoded, tf.float32)
         # converting rgb to [0,1] from [0,255]
         image_decoded = tf.divide(image_decoded, 255)
-
-      image_decoded = tf.image.resize_images(image_decoded, [height, width], 
-        align_corners=True)
+      if FLAGS['downsample']:
+        image_decoded = tf.image.resize_images(image_decoded, [height, width], 
+          align_corners=True)
       if data_format == 'channels_first':
         image_decoded = tf.transpose(image_decoded,[2,0,1])
       images.append(image_decoded)       
@@ -187,7 +188,10 @@ def run_trainer(model_fn, model_dir_name, training_steps, config):
    #                                    eval_results['loss']):
     #break
   # Export the model for later use
-  rgb = tf.placeholder(tf.float32, [1, 3, 240, 320])
+  if FLAGS['downsample']:
+    rgb = tf.placeholder(tf.float32, [1, 3, 240, 320])
+  else:
+    rgb = tf.placeholder(tf.float32, [1, 3, 480, 640])
   export_input_fn = tf.estimator.export.build_raw_serving_input_receiver_fn({
      'rgb': rgb,
   })
@@ -218,7 +222,7 @@ def main():
 
   print("Number of training steps (until eval):", num_steps)
   ####
-  model_fn = modelfn_NetV0Res_LossL1SigL1ExpResL1
+  model_fn = modelfn_NetV0_LossL1SigL1
   ####
   if args.limit_gpu:
     config = tf.ConfigProto()

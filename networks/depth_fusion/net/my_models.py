@@ -13,20 +13,38 @@ from net.my_losses import *
 # model functions used while training (needed for checkpoint based restore)
 ########
 
+def model_fn_NetV04_LossL1SigL1(features, labels, mode, params):
+  """
+  model dir names and properties:
+  model_name = NetV04_L1Sig4L1_down_tr1, lr=0.00014,
+  weights=[500, 1500], sig_params_list_current = [{'deltas':[4,], 'weights':[1,], 'epsilon': 1e-9},]
+  """
+  def loss_function(inp, gt, data_format='channels_first'):
+    weights = [500, 1500]
+    sig_params_list_current = [{'deltas':[4,], 'weights':[1,], 'epsilon': 1e-9},]
+    return pointwise_l1_loss_sig_l1_loss(inp, gt, data_format=data_format, weights=weights, sig_params_list=sig_params_list_current)
+  network = NetworkV04
+  learning_rate_base = 0.00014
+  return model_fn_general(features, labels, mode, params, loss_function, network, learning_rate_base)
+
 def model_fn_NetV04Res_LossL1SigL1ExpResL1(features, labels, mode, params):
   """
     Used for network with a smaller decoder compared to NetV03
     model_dir names and properties of training instances:
     model_name = NetV04Res_L1SigL1ExpResL1_down_aug_tr1, weights=[500,500,500], res_converter_exp_conf, lr=0.00015
+    model_name = NetV04Res_L1Sig4L1ExpResL1_down_tr1, weights=[500, 1500, 500], res_converter_exp_conf, lr=0.00014,
+                  sig_params_list_current = [{'deltas':[4,], 'weights':[1,], 'epsilon': 1e-9},]
+    model_name = NetV04Res_L1Sig4L1ExpResL1_down_tr2, same as tr1 but with the new training dataset
 
   """
   def loss_function(inp, gt, data_format='channels_first'):
-    weights = [500, 500, 500]
+    weights = [500, 1500, 500]
     res_converter = res_converter_exp_conf
+    sig_params_list_current = [{'deltas':[4,], 'weights':[1,], 'epsilon': 1e-9},]
     return pointwise_l1_loss_sig_l1_loss_res_l1_loss(inp, gt, data_format=data_format, weights=weights,
-      res_converter=res_converter_exp_conf)
+      res_converter=res_converter_exp_conf, sig_params_list=sig_params_list_current)
   network = NetworkV04Res
-  learning_rate_base = 0.00015
+  learning_rate_base = 0.00014
   return model_fn_general(features, labels, mode, params, loss_function, network, learning_rate_base)
 
 def model_fn_NetV03Res_LossL1SigL1ExpResL1(features, labels, mode, params):
@@ -87,15 +105,19 @@ def model_fn_L2_loss_clean_down(features, labels, mode, params):
   return model_fn_general(features, labels, mode, params, loss_function, network, learning_rate_base)
 
 def model_fn_Netv2_LossL1SigL1_down(features, labels, mode, params):
-	""" Used in the net version resembling sparse invariant cnn. 
-  	Note: The idepth used here is cleaned using sops.replace_nonfinite
-  	Note: model_name = NetV02_L1SigL1_down_aug
-  	"""
-	loss_function = pointwise_l1_loss_sig_l1_loss
-	network = NetworkV02
-	learning_rate_base = 0.0004
-	return model_fn_general(features, labels, mode, params, loss_function, network, 
-		learning_rate_base)
+  """
+  Used in the net version resembling sparse invariant cnn!
+  model dir names and properties:
+  model_name = NetV02_L1Sig4L1_down_tr1, lr=0.0004, 
+  weights=[500, 1500], sig_params_list_current = [{'deltas':[4,], 'weights':[1,], 'epsilon': 1e-9},]
+  """
+  def loss_function(inp, gt, data_format='channels_first'):
+    weights = [500, 1500]
+    sig_params_list_current = [{'deltas':[4,], 'weights':[1,], 'epsilon': 1e-9},]
+    return pointwise_l1_loss_sig_l1_loss(inp, gt, data_format=data_format, weights=weights, sig_params_list=sig_params_list_current)
+  network = NetworkV02
+  learning_rate_base = 0.0004
+  return model_fn_general(features, labels, mode, params, loss_function, network, learning_rate_base)
 
 #########
 # general model function
@@ -185,20 +207,21 @@ def model_fn_general(features, labels, mode, params, loss_function, network, lea
 #######################
 # single Image models 
 #######################
-def modelfn_NetV0Res_LossL1SigL1ExpResL1(features, labels, mode, params):
+def modelfn_NetV0_LossL1SigL1(features, labels, mode, params):
   """
     Network for single image depth prediction.
     model_dir names and properties of instances:
-    model_name = NetV0Res_L1SigL1ExpResL1_down_aug_tr1 weights=[1,0.5,1], res_converter_exp_conf, lr=0.0001
-    model_name = NetV0Res_L1SigL1ExpResL1_down_aug_tr1_1 weights=[1,0.5,1], res_converter_exp_conf, lr=0.001 
-  """
-  network = NetworkV0Res
-  learning_rate_base = 0.001
+    model_name =  NetV0_L1SigL1_tr1 weights=[500, 1500], res_converter_exp_conf, lr=0.0004, 
+                  sig_params_list_current = [{'deltas':[4,], 'weights':[1,], 'epsilon': 1e-9},]
+    model_name =  NetV0_L1SigL1_tr2 weights=[500, 1500], res_converter_exp_conf, lr=0.00014, 
+                  sig_params_list_current = [{'deltas':[4,], 'weights':[1,], 'epsilon': 1e-9},]
+  """ 
   def loss_function(inp, gt, data_format='channels_first'):
-    weights=[1,0.5,1]
-    res_converter=res_converter_exp_conf
-    return pointwise_l1_loss_sig_l1_loss_res_l1_loss(inp, gt, data_format='channels_first', weights=weights, 
-      res_converter=res_converter)
+    weights = [500, 1500]
+    sig_params_list_current = [{'deltas':[4,], 'weights':[1,], 'epsilon': 1e-9},]
+    return pointwise_l1_loss_sig_l1_loss(inp, gt, data_format=data_format, weights=weights, sig_params_list=sig_params_list_current)
+  learning_rate_base = 0.00014
+  network = NetworkV0
   return model_fn_general_singleImage(features, labels, mode, params, loss_function, network, learning_rate_base)
 
 

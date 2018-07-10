@@ -4,7 +4,8 @@
 
     <node name="depthmap_fuser" pkg="reinforced_visual_slam" type="depthmap_fuser.py" respawn="false" output="screen"/>
 
-    <node name="depthmap_predictor" pkg="reinforced_visual_slam" type="depthmap_predictor.py" respawn="false" output="screen"/>
+    <node name="depthmap_predictor" pkg="reinforced_visual_slam" type="single_image_depth_predictor.py" 
+        respawn="false" output="screen"/>
 
     <node name="lsd_node_reinforced_dataset" pkg="lsd_slam_core" type="deepTAM_dataset_slam" respawn="true" output="screen" launch-prefix="xterm -e gdb --args">
 
@@ -13,9 +14,10 @@
         <param name="files" value="/misc/lmbraid19/thomasa/datasets/rgbd/rgbd_dataset_freiburg1_teddy/rgb_depth_associated.txt"/>
 	    
         <param name="predictDepth" value="true"/>
-        <param name="doSLAM" value="false"/>
+        <param name="doSLAM" value="true"/>
         <param name="useGtDepth" value="false"/>
-        <param name="gtBootstrap" value="true"/>
+        <param name="gtBootstrap" value="false"/>
+        <param name="readSparse" value="true"/>
 
         <!-- Values to control keyframe generation frequency:
                 KFDistWeight = maximum distance between 2 KFs
@@ -28,31 +30,38 @@
         <param name="/Debug/freeDebugParam1" value="4"/>
         <!--
         
-        <param name="/Debug/freeDebugParam1" value="0.1"/>
         -->
         <param name="/Debug/plotStereoImages" value="false"/>
-        <param name="/Debug/plotDepthFusion" value="true"/>
+        <param name="/Debug/plotDepthFusion" value="false"/>
 
         <remap from="/lsd_slam/debug" to="/lsd_slam_reinforced/debug"/>
         <remap from="/lsd_slam/graph" to="/lsd_slam_reinforced/graph"/>
         <remap from="/lsd_slam/keyframes" to="/lsd_slam_reinforced/keyframes"/>
         <remap from="/lsd_slam/liveframes" to="/lsd_slam_reinforced/liveframes"/>
+    
     </node>
 
-    <node name="siasa_viewer" pkg="reinforced_visual_slam" type="siasa_viewer.py" respawn="false" output="screen">
+        <node name="siasa_viewer" pkg="reinforced_visual_slam" type="siasa_viewer.py" respawn="false" output="screen">
         <remap from="/lsd_slam/liveframes" to="/lsd_slam_reinforced/liveframes"/>
         <param name="gt" value="/misc/lmbraid19/thomasa/datasets/rgbd/rgbd_dataset_freiburg1_teddy/groundtruth_associated.txt"/>
-    <!--
-        <remap from="lsd_slam/keyframes" to="/lsd_slam_reinforced/keyframes"/>
-    -->
+    
     </node>
 
+    
+    <!--
+
+   ** To use Huihong's depth predictor network:
+   <node name="depthmap_predictor" pkg="reinforced_visual_slam" type="depthmap_predictor.py" respawn="false" output="screen"/>
+   
     <node name="lsd_node_reinforced_viewer" pkg="lsd_slam_viewer" type="viewer" respawn="false" output="screen">
         <remap from="/lsd_slam/debug" to="/lsd_slam_reinforced/debug"/>
         <remap from="/lsd_slam/graph" to="/lsd_slam_reinforced/graph"/>
         <remap from="/lsd_slam/keyframes" to="/lsd_slam_reinforced/keyframes"/>
         <remap from="/lsd_slam/liveframes" to="/lsd_slam_reinforced/liveframes"/>
     </node>
+
+    <remap from="lsd_slam/keyframes" to="/lsd_slam_reinforced/keyframes"/>
+    -->
 
 
 

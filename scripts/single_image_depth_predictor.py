@@ -11,10 +11,6 @@ sys.path.insert(0,'/misc/software/opencv/opencv-3.2.0_cuda8_with_contrib-x86_64-
 import cv2
 import numpy as np
 
-#import matplotlib
-#matplotlib.use('agg')
-#import matplotlib.pyplot as plt
-
 from reinforced_visual_slam.srv import *
 import rospy
 from cv_bridge import CvBridge
@@ -23,19 +19,19 @@ import tensorflow as tf
 sys.path.insert(0,'/misc/lmbraid19/thomasa/catkin_ws/src/reinforced_visual_slam/networks/depth_fusion')
 from net.my_models import *
 
-class DepthmapFuser(object):
+class DepthmapPredictor(object):
 
     def __init__(self, input_img_width=640, input_img_height=480):
-        rospy.init_node('depthmap_fuser')
+        rospy.init_node('single_image_depthmap_predictor')
         self._cv_bridge_rgb = CvBridge()
         self._cv_bridge_depth = CvBridge()
-
+        
     def configure(self, model_dir, model_function, width=320, height=240):
         self.width = width
         self.height = height
-        self.lsd_depth_fuser = tf.estimator.Estimator(model_fn=model_function, model_dir=model_dir, 
+        self.lsd_depth_predictor = tf.estimator.Estimator(model_fn=model_function, model_dir=model_dir, 
             params={'data_format':"channels_first", 'multi_gpu':False}) 
-        rospy.logwarn("Finished loading the depthmap fuser network")
+        rospy.logwarn("Finished loading the single image depth predictor network")
 
     def convertOpenCvRGBToTfTensor(self, rgb, data_format="channels_first"):
         #rgb_new = cv2.normalize(rgb, None, alpha=-0.5, beta=0.5, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_32F)
@@ -46,13 +42,11 @@ class DepthmapFuser(object):
             rgb_new = np.transpose(rgb_new, (2,0,1))
         return rgb_new
 
-    def predict_input_fn(self, rgb, sparse_idepth, sparse_idepth_var):
+    def predict_input_fn(self, rgb):
         feature_names = [
-          'rgb',
-          'sparseInverseDepth',
-          'sparseInverseDepthVariance'
+          'rgb'
         ]
-        input_tensors = [rgb, sparse_idepth[np.newaxis,:,:], sparse_idepth_var[np.newaxis,:,:]]
+        input_tensors = [rgb]
         inputs = dict(zip(feature_names, input_tensors))
         #print(inputs['rgb'].shape)
         dataset = tf.data.Dataset.from_tensors(inputs)
@@ -63,49 +57,31 @@ class DepthmapFuser(object):
               #features['sparseInverseDepthVariance'].shape)
         return features
 
-    def fuse_depthmap_cb(self, req, debug=True):
-        rospy.loginfo("Received image and sparse idepths to fuse")
-        # Requirement: RGB has to np array float32, normalized in range (-0.5,0.5), with shape (1,3,240,320)
+    def predict_depthmap_cb(self, req, debug=True):
+        rospy.loginfo("Received image to predict depth")
+        # Requirement: RGB has to np array float32, normalized in range (-0.5,0.5), with shape (1,3,H,W)
         # Get the Keyframe RGB image from ROS message and convert it to openCV Image format
         try:
             rgb_image = self._cv_bridge_rgb.imgmsg_to_cv2(req.rgb_image, "passthrough")
         except CvBridgeError as e:
             print(e)
-            return DepthFusionResponse(0)
+            return PredictDepthmapResponse(0)
         if False:
             cv2.imshow('Input RGB', rgb_image)
         rgb_tensor = self.convertOpenCvRGBToTfTensor(rgb_image)
-        
-        # Get input sparse idepth and its variance. Convert it to gt scale (m)
-        idepth_descaled = np.array(req.idepth, dtype=np.float32)/req.scale
-        idepth_var_descaled = np.array(req.idepth_var, dtype=np.float32)/req.scale
-
-        # Reshape and resize sparse idepths
-        sparse_idepth = idepth_descaled.reshape((480, 640))
-        sparse_idepth = cv2.resize(sparse_idepth, (320, 240), cv2.INTER_NEAREST)
-
-        sparse_idepth_var = idepth_var_descaled.reshape((480, 640))
-        sparse_idepth_var = cv2.resize(sparse_idepth_var, (320, 240), cv2.INTER_NEAREST)
-        
+                
         #***Get idepth prediction from net. Scale it back to input sparse idepth scale and invert it***
-        idepth_predictions = self.lsd_depth_fuser.predict(lambda : 
-            self.predict_input_fn(rgb_tensor, sparse_idepth, sparse_idepth_var))
+        idepth_predictions = self.lsd_depth_predictor.predict(lambda : 
+            self.predict_input_fn(rgb_tensor))
         #idepthmap_scaled = list(idepth_predictions)[0]['depth'][0] * req.scale
         prediction = list(idepth_predictions)[0]['depth']
         print("prediction.shape:", prediction.shape)
         depthmap_predicted = prediction[0]
-        if prediction.shape[0] > 1:
-            confidence = prediction[1]
-        else:
-            confidence = np.ones_like(depthmap_predicted)
-        residual = -np.log(confidence)
         #depthmap_predicted = np.where(depthmap_predicted > 0, 1. / depthmap_predicted, np.zeros_like(depthmap_predicted))
 
         # Doing cv_bridge conversion
         depthmap_predicted_msg = self._cv_bridge_depth.cv2_to_imgmsg(depthmap_predicted, "passthrough")
         depthmap_predicted_msg.step = int (depthmap_predicted_msg.step)
-        residual_msg = self._cv_bridge_depth.cv2_to_imgmsg(residual, "passthrough")
-        residual_msg.step = int(residual_msg.step)
         if debug:
             print("depthmap_predicted max:", np.max(depthmap_predicted))
             print("depthmap_predicted min:", np.min(depthmap_predicted))
@@ -124,34 +100,28 @@ class DepthmapFuser(object):
             #plt.colorbar()
             #plt.show()
 
-        return DepthFusionResponse(depthmap_predicted_msg, residual_msg)
+        return PredictDepthmapResponse(depthmap_predicted_msg)
 
     def run(self):
-        service = rospy.Service('fuse_depthmap', DepthFusion, self.fuse_depthmap_cb)
+        service = rospy.Service('predict_depthmap', PredictDepthmap, self.predict_depthmap_cb)
         print("Ready to predict depthmaps")
         try:
             rospy.spin()
         except KeyboardInterrupt:
-            print("Shutting down depthmap fuser")
+            print("Shutting down single image depth predictor")
 
 if __name__ == "__main__":
-    fuser = DepthmapFuser()
+    predictor = DepthmapPredictor()
 
     # params to change for network:
-    model_name = "NetV02_L1Sig4L1_down_tr1"
-    #model_name = "NetV04Res_L1Sig4L1ExpResL1_down_tr2"
-    #model_name = "NetV04Res_L1Sig4L1ExpResL1_down_tr1"
-    #model_name = "NetV02_L1SigL1_down_aug_"
-    #model_name = "NetV03_L1SigEqL1_down_aug"
-    #model_function = model_fn_NetV04Res_LossL1SigL1ExpResL1
-    model_function = model_fn_Netv2_LossL1SigL1_down
-    #model_function = model_fn_Netv3_LossL1SigL1
-    rospy.loginfo("Loading depth fusion model: %s", model_name)
+    model_name = "NetV0_L1SigL1_tr1"
+    model_function = modelfn_NetV0_LossL1SigL1
+    rospy.loginfo("Loading single image depth predictor model: %s", model_name)
     
     model_base_dir = "/misc/lmbraid19/thomasa/catkin_ws/src/reinforced_visual_slam/networks/depth_fusion/training"
     model_dir = os.path.join(model_base_dir, model_name)
 
-    fuser.configure(
+    predictor.configure(
         model_dir=model_dir,
         model_function = model_function)
-    fuser.run()
+    predictor.run()

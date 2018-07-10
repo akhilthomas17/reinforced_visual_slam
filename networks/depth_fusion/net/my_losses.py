@@ -9,7 +9,7 @@ sig_params_list = [{'deltas':[1,], 'weights':[1,], 'epsilon': 1e-9},
                    ]
 
 def pointwise_l1_loss_sig_l1_loss_res_l1_loss(pred, gt, data_format='channels_first', weights=[0.4, 0.6, 0.5], 
-    res_converter=res_converter_exp_conf):
+    res_converter=res_converter_exp_conf, sig_params_list=sig_params_list):
     """ Computes pointwise l1 loss and sig loss (gradient) of depth, and loss of residual
     The input tensors must use the format NCHW.
     This loss ignores nan values. 
@@ -143,7 +143,7 @@ def mean_l1_loss_robust(inp, gt, epsilon=1e-6):
         return tf.reduce_mean(tf.sqrt(diff**2 + epsilon))
 
 
-def pointwise_l1_loss_sig_l1_loss(inp, gt, data_format='channels_first', weights=[0.4, 0.6]):
+def pointwise_l1_loss_sig_l1_loss(inp, gt, data_format='channels_first', weights=[0.4, 0.6], sig_params_list=sig_params_list):
     """ Computes pointwise l1 loss and sig loss (gradient).
     The input tensors must use the format NCHW. 
     This loss ignores nan values. 
