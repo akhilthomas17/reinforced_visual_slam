@@ -55,6 +55,7 @@ add_message_files(
   FILES
   keyframeMsg.msg
   keyframeGraphMsg.msg
+  keyframeMsgSiasa.msg
 )
 
 ## Generate services in the 'srv' folder

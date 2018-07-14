@@ -26,11 +26,12 @@ class DepthmapPredictor(object):
         self._cv_bridge_rgb = CvBridge()
         self._cv_bridge_depth = CvBridge()
         
-    def configure(self, model_dir, model_function, width=320, height=240):
+    def configure(self, model_dir, model_function, run_config, width=320, height=240):
         self.width = width
         self.height = height
         self.lsd_depth_predictor = tf.estimator.Estimator(model_fn=model_function, model_dir=model_dir, 
-            params={'data_format':"channels_first", 'multi_gpu':False}) 
+            params={'data_format':"channels_first", 'multi_gpu':False},
+            config=run_config) 
         rospy.logwarn("Finished loading the single image depth predictor network")
 
     def convertOpenCvRGBToTfTensor(self, rgb, data_format="channels_first"):
@@ -69,11 +70,11 @@ class DepthmapPredictor(object):
         if False:
             cv2.imshow('Input RGB', rgb_image)
         rgb_tensor = self.convertOpenCvRGBToTfTensor(rgb_image)
+        print("Input rgb shape:", rgb_tensor.shape)
                 
         #***Get idepth prediction from net. Scale it back to input sparse idepth scale and invert it***
         idepth_predictions = self.lsd_depth_predictor.predict(lambda : 
             self.predict_input_fn(rgb_tensor))
-        #idepthmap_scaled = list(idepth_predictions)[0]['depth'][0] * req.scale
         prediction = list(idepth_predictions)[0]['depth']
         print("prediction.shape:", prediction.shape)
         depthmap_predicted = prediction[0]
@@ -89,11 +90,11 @@ class DepthmapPredictor(object):
             print("depthmap_predicted.shape", depthmap_predicted.shape)
             plot_depth_gray = cv2.convertScaleAbs(depthmap_predicted*255./np.max(depthmap_predicted))
             depth_predicted_plot = cv2.cvtColor(plot_depth_gray, cv2.COLOR_GRAY2RGB)
-            depth_predicted_plot[:,:,0] = 255 - cv2.convertScaleAbs((0-depthmap_predicted*req.scale)*255.)
-            depth_predicted_plot[:,:,1] = 255 - cv2.convertScaleAbs((1-depthmap_predicted*req.scale)*255.)
-            depth_predicted_plot[:,:,2] = 255 - cv2.convertScaleAbs((2-depthmap_predicted*req.scale)*255.)
+            depth_predicted_plot[:,:,0] = 255 - cv2.convertScaleAbs((0-depthmap_predicted)*255.)
+            depth_predicted_plot[:,:,1] = 255 - cv2.convertScaleAbs((1-depthmap_predicted)*255.)
+            depth_predicted_plot[:,:,2] = 255 - cv2.convertScaleAbs((2-depthmap_predicted)*255.)
             cv2.imshow('Predicted Depthmap', depth_predicted_plot)
-            cv2.waitKey(100)
+            cv2.waitKey(0)
             ## uncomment below to plot with matplotlib
             #plt.figure("fused_depthmap (scale in m)")
             #plt.imshow(depthmap_predicted, cmap='hot')
@@ -121,7 +122,13 @@ if __name__ == "__main__":
     model_base_dir = "/misc/lmbraid19/thomasa/catkin_ws/src/reinforced_visual_slam/networks/depth_fusion/training"
     model_dir = os.path.join(model_base_dir, model_name)
 
+    config = tf.ConfigProto()
+    config.gpu_options.per_process_gpu_memory_fraction = 0.1
+    run_config = tf.estimator.RunConfig(session_config=config)
+
     predictor.configure(
         model_dir=model_dir,
-        model_function = model_function)
+        model_function = model_function,
+        width=640, height=480,
+        run_config=run_config)
     predictor.run()

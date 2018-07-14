@@ -240,23 +240,11 @@ class DeepTAMTracker(object):
             print("t = :", t)
         R = angleaxis_to_rotation_matrix(output_arrs['predict_rotation'][0])
         q = output_arrs['predict_rotation'][0]
-        if self.debug:
-            #print("R = :", R)
-            print("q = :", q)
 
         T = np.vstack((np.hstack((R,t[:,np.newaxis])), np.asarray([0,0,0,1])))
         Tinv = np.linalg.inv(T)
         Rinv = Tinv[:3,:3]
         tinv = Tinv[:3,3]
-
-        if False:
-            #cv2.imshow('depth_map', output_arrs['rendered_depth'][0, 0])
-            cv2.imshow('warped_img', output_arrs['warped_image'][0].transpose([1,2,0])+0.5)
-            #cv2.imshow('depth_normalized0', output_arrs['depth_normalized0'][0, 0])
-            #cv2.imshow('key_image0', output_arrs['key_image0'][0].transpose([1,2,0])+0.5)
-            #cv2.imshow('current_image0', output_arrs['current_image0'][0].transpose([1,2,0])+0.5)
-            cv2.imshow('diff', np.abs(output_arrs['warped_image'][0] - output_arrs['current_image0'][0]).transpose([1,2,0]))
-            cv2.waitKey(0)
 
         # Uncomment below to find SE3 with respect to world coordinates
         #R_w = R.dot(angleaxis_to_rotation_matrix(prev_rotation))
@@ -267,9 +255,24 @@ class DeepTAMTracker(object):
         #q = self.angle_axis_to_quaternion(output_arrs['predict_rotation'][0])
         #print("Quaternion:", q)
         if self.debug:
-            print("translation:", Vector3(*tinv))
+            print("deepTAM_tracker: q worldToCam= :", q)
+            print("deepTAM_tracker: t worldToCam = :", t)
+            print("deepTAM_tracker: R worldToCam = :", R)
+            print("deepTAM_tracker: t camToWorld = :", tinv)
+            print("deepTAM_tracker: R camToWorld = :", Rinv)
+            print("deepTAM_tracker: t camToWorld message:", Vector3(*tinv))
                 
         rospy.loginfo("Returning tracked response")
+
+        if True:
+            #cv2.imshow('depth_map', output_arrs['rendered_depth'][0, 0])
+            cv2.imshow('warped_img', output_arrs['warped_image'][0].transpose([1,2,0])+0.5)
+            #cv2.imshow('depth_normalized0', output_arrs['depth_normalized0'][0, 0])
+            #cv2.imshow('key_image0', output_arrs['key_image0'][0].transpose([1,2,0])+0.5)
+            #cv2.imshow('current_image0', output_arrs['current_image0'][0].transpose([1,2,0])+0.5)
+            cv2.imshow('diff', np.abs(output_arrs['warped_image'][0] - output_arrs['current_image0'][0]).transpose([1,2,0]))
+            cv2.waitKey(100)
+
         return TrackImageResponse(Transform(Vector3(*tinv), self.rotation_matrix_to_quaternion(Rinv)))
 
     def run(self):

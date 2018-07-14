@@ -207,6 +207,25 @@ def model_fn_general(features, labels, mode, params, loss_function, network, lea
 #######################
 # single Image models 
 #######################
+
+def modelfn_NetV0l_LossL1SigL1(features, labels, mode, params):
+  """
+    Network for single image depth prediction.
+    model_dir names and properties of instances:
+    model_name =  NetV0l_L1SigL1_tr1 weights=[500, 1500], res_converter_exp_conf, lr=0.0002, 
+                  sig_params_list_current = [{'deltas':[4,], 'weights':[1,], 'epsilon': 1e-9},]
+    model_name =  NetV0l_L1SigL1_tr2 weights=[500, 1500], res_converter_exp_conf, lr=0.00014, 
+                  sig_params_list_current = [{'deltas':[4,], 'weights':[1,], 'epsilon': 1e-9},]
+  """ 
+  def loss_function(inp, gt, data_format='channels_first'):
+    weights = [500, 1500]
+    sig_params_list_current = [{'deltas':[4,], 'weights':[1,], 'epsilon': 1e-9},]
+    return pointwise_l1_loss_sig_l1_loss(inp, gt, data_format=data_format, weights=weights, sig_params_list=sig_params_list_current)
+  learning_rate_base = 0.00014
+  network = NetworkV0l
+  return model_fn_general_singleImage(features, labels, mode, params, loss_function, network, learning_rate_base)
+
+
 def modelfn_NetV0_LossL1SigL1(features, labels, mode, params):
   """
     Network for single image depth prediction.
@@ -220,7 +239,7 @@ def modelfn_NetV0_LossL1SigL1(features, labels, mode, params):
     weights = [500, 1500]
     sig_params_list_current = [{'deltas':[4,], 'weights':[1,], 'epsilon': 1e-9},]
     return pointwise_l1_loss_sig_l1_loss(inp, gt, data_format=data_format, weights=weights, sig_params_list=sig_params_list_current)
-  learning_rate_base = 0.00014
+  learning_rate_base = 0.0004
   network = NetworkV0
   return model_fn_general_singleImage(features, labels, mode, params, loss_function, network, learning_rate_base)
 

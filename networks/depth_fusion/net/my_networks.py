@@ -460,6 +460,33 @@ class NetworkV0(object):
       x = self.output_block(x, data_format=data_format)
       return x
 
+class NetworkV0l(object):
+  """ 
+  Network architecture for single image depth prediction.
+  All convolutions are done with filter size  = 5.
+  """
+  def __init__(self):
+    super(NetworkV0l, self).__init__()
+    self.initializer = initializer_none
+
+  def output_block(self, x, input_dim=8, data_format='channels_first', name='ouput_conv'):
+    kernel_init = self.initializer()
+    filters = input_dim // 2
+    x = tf.layers.conv2d(x, filters=filters, kernel_size=5, padding="same", name=name,
+     activation=tf.nn.relu, kernel_initializer=kernel_init, data_format=data_format)
+    x = tf.layers.conv2d(x, filters=1, kernel_size=5, padding="same", name=name+'.1',
+     activation=tf.nn.relu, kernel_initializer=kernel_init, data_format=data_format)
+    return x
+
+  def __call__(self, rgb, training=False, data_format='channels_first'):
+    with tf.variable_scope('single_image_depth_prediction_model'):
+      x = encoder_block(rgb, input_dim=4, num=5, k=5, data_format=data_format, initializer=self.initializer)
+      x = tf.layers.conv2d(x, filters=64, kernel_size=3, activation=tf.nn.relu, 
+      name='conv_low', kernel_initializer=self.initializer(), padding="same", data_format=data_format)
+      x = decoder_block_small(x, input_dim=64, num=5, k=5, data_format=data_format, initializer=self.initializer)
+      x = self.output_block(x, input_dim=4, data_format=data_format)
+      return x
+
 
 ##########################
 # helper functions

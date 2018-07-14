@@ -222,7 +222,7 @@ def main():
 
   print("Number of training steps (until eval):", num_steps)
   ####
-  model_fn = modelfn_NetV0_LossL1SigL1
+  model_fn = modelfn_NetV0l_LossL1SigL1
   ####
   if args.limit_gpu:
     config = tf.ConfigProto()

@@ -11,6 +11,14 @@ import numpy as np
 import matplotlib.colors as colors
 import json
 from minieigen import Quaternion
+from depthmotionnet.vis import compute_point_cloud_from_depthmap
+
+# for cv_bridge
+sys.path.insert(0, '/misc/lmbraid19/thomasa/catkin_ws/install/lib/python3/dist-packages')
+# for cv2
+sys.path.insert(0,'/misc/software/opencv/opencv-3.2.0_cuda8_with_contrib-x86_64-gcc5.4.0/lib/python3.5/dist-packages')
+
+from cv_bridge import CvBridge
 
 
 class SiasaViewer(object):
@@ -36,6 +44,20 @@ class SiasaViewer(object):
         self.prop_liveframe = json.dumps(prop_dict_liveframe)
         self.prop_keyframe = json.dumps(prop_dict_keyframe)
 
+        # calcualting intrinsics
+        self.sun3d_intrinsics = np.array([[0.89115971, 1.18821299, 0.5, 0.5]],dtype=np.float32)
+        self.sun3d_K = np.eye(3)
+        self.sun3d_K[0,0] = self.sun3d_intrinsics[0][0]*640
+        self.sun3d_K[1,1] = self.sun3d_intrinsics[0][1]*480
+        self.sun3d_K[0,2] = self.sun3d_intrinsics[0][2]*640
+        self.sun3d_K[1,2] = self.sun3d_intrinsics[0][3]*480
+
+        # initializing cv_bridge
+        self._cv_bridge = CvBridge()
+
+        # initializing dictionary of keyframes
+        self.keyframes = {}
+
     def run_listener(self):
         # Visualize the groundtruth
         if rospy.has_param('~gt'):
@@ -47,7 +69,9 @@ class SiasaViewer(object):
             self.has_gt = False
         # Add subscribers for liveframes and keyframes
         self.liveframe_sub = rospy.Subscriber("/lsd_slam/liveframes", keyframeMsg, self.liveframe_callback)
-        self.keyframe_sub = rospy.Subscriber("/lsd_slam/keyframes", keyframeMsg, self.keyframe_callback)
+        #self.keyframe_sub = rospy.Subscriber("/lsd_slam/keyframes", keyframeMsg, self.keyframe_callback)
+        self.siasa_sub = rospy.Subscriber("/lsd_slam/siasa_keyframes", keyframeMsgSiasa, self.keyframe_siasa_callback)
+        self.keyframe_graph_sub = rospy.Subscriber("/lsd_slam/graph", keyframeGraphMsg, self.keyframe_graph_callback)
         rospy.loginfo("Initialized siasa viewer node")
         rospy.spin()
 
@@ -91,6 +115,58 @@ class SiasaViewer(object):
         #send_tra_to_siasa(gt_pose_list, color=(0,1,0), name='/cam_gt')
         return gt_pose_list, gt_timestamps
 
+    def keyframe_graph_callback(self, keyframeGraphMsg_data):
+        rospy.loginfo("Received keyframe graph message")
+        frame_data_bytes = keyframeGraphMsg_data.frameData
+        frame_data = read_frameData_struct(frame_data_bytes, keyframeGraphMsg_data.numFrames)
+        for frame in frame_data:
+            kf = self.keyframes[frame.id]
+            camToWorld_new = np.asarray(frame.camToWorld, dtype=np.float32)
+            if not np.array_equal(kf.camToWorld, camToWorld_new):
+                rospy.logerr("siasa_viewer: changing graph for keyframe with id: %d", frame.id)
+                print("camToWorld_new", camToWorld_new)
+                print("kf.camToWorld", kf.camToWorld)
+                R, t = self.send_frame_to_siasa(camToWorld_new, '/cam_keyframe_reinforced', frame.id, self.prop_keyframe, 
+                    return_inverse=True)
+                # Make pointcloud out of the depth image and colour it with the rgb image
+                pointcloud_siasa = compute_point_cloud_from_depthmap(kf.depth, self.sun3d_K, R, t, colors=kf.rgb.transpose([2,0,1]))
+                aa = siasa.AttributeArray('Colors', pointcloud_siasa['colors'])
+                siasa.setPolyData(pointcloud_siasa['points'],'points_keyframe/'+str(frame.id), 0, point_attributes=[aa], 
+                    connection=self.connection)
+                self.keyframes[frame.id] = Keyframe(camToWorld_new, kf.depth, kf.rgb)
+
+
+    def keyframe_siasa_callback(self, keyframeMsg_data):
+        rospy.loginfo("Received siasa keyframe message")
+        
+        # Get the Keyframe Depth image from ROS message and convert it to openCV Image format
+        try:
+            depth = self._cv_bridge.imgmsg_to_cv2(keyframeMsg_data.depth, "passthrough")
+        except CvBridgeError as e:
+            print(e)
+            return
+
+        # Get the Keyframe RGB image from ROS message and convert it to openCV Image format
+        try:
+            rgb = self._cv_bridge.imgmsg_to_cv2(keyframeMsg_data.rgb, "passthrough")
+        except CvBridgeError as e:
+            print(e)
+            return
+
+        # Read camToWorld from message and convert to world to cam and send to siasa
+        camToWorld = np.asarray(keyframeMsg_data.camToWorld, dtype=np.float32)
+        self.keyframes[keyframeMsg_data.id] = Keyframe(camToWorld, depth, rgb)
+        if(self.debug):
+            print("siasa_viewer: keyframeMsg_data.id*******************", keyframeMsg_data.id)
+        R, t = self.send_frame_to_siasa(camToWorld, '/cam_keyframe_reinforced', keyframeMsg_data.id, 
+            self.prop_keyframe, return_inverse=True)
+
+        # Make pointcloud out of the depth image and colour it with the rgb image
+        pointcloud_siasa = compute_point_cloud_from_depthmap(depth, self.sun3d_K, R, t, colors=rgb.transpose([2,0,1]))
+        aa = siasa.AttributeArray('Colors', pointcloud_siasa['colors'])
+        siasa.setPolyData(pointcloud_siasa['points'],'points_keyframe/'+str(keyframeMsg_data.id), 0, point_attributes=[aa], 
+            connection=self.connection)
+
     def keyframe_callback(self, keyframeMsg_data):
         rospy.loginfo("Received keyframe message")
         camToWorld = np.asarray(keyframeMsg_data.camToWorld, dtype=np.float32)
@@ -104,13 +180,14 @@ class SiasaViewer(object):
         aa = siasa.AttributeArray('Colors', pointcloud_siasa['colors'])
         siasa.setPolyData(pointcloud_siasa['points'],'/points_keyframe', 0, point_attributes=[aa], connection=self.connection)
         if self.debug:
-            print("Pointcloud: ", pointcloud_bytes[:36])
-            rospy.logdebug("Pointcloud data input length: %d", len(pointcloud_bytes))
-            rospy.logdebug("Pointcloud struct length: %d", arr_len)
-            rospy.logdebug("Pointcloud siasa length: %d", len(pointcloud_siasa['points']))
+            print("siasa_viewer: Pointcloud: ", pointcloud_bytes[:36])
+            rospy.logdebug("siasa_viewer: Pointcloud data input length: %d", len(pointcloud_bytes))
+            rospy.logdebug("siasa_viewer: Pointcloud struct length: %d", arr_len)
+            rospy.logdebug("siasa_viewer: Pointcloud siasa length: %d", len(pointcloud_siasa['points']))
+            print("siasa_viewer: keyframeMsg_data.id***********", keyframeMsg_data.id)
 
     def liveframe_callback(self, keyframeMsg_data):
-        rospy.loginfo("Received liveframe message")
+        rospy.loginfo("siasa_viewer: Received liveframe message")
         camToWorld = np.asarray(keyframeMsg_data.camToWorld, dtype=np.float32)
         if self.has_gt:
             timestamp_now = keyframeMsg_data.time
@@ -119,13 +196,15 @@ class SiasaViewer(object):
             if self.gt_end > self.gt_start:
                 send_tra_to_siasa(gt_pose_list_now, color=(0,1,0), name='/cam_gt', ind_prefix=self.gt_start)
                 self.gt_start = self.gt_end
-        T_camToWorld = self.send_frame_to_siasa(camToWorld, '/cam_live_reinforced', keyframeMsg_data.id, self.prop_liveframe)
         if self.debug:
-            rospy.loginfo("timestamp_now: %f", timestamp_now)
-            print("self.gt_timestamps: ", self.gt_timestamps)
-            rospy.logerr("self.gt_end: %d", self.gt_end)
+            print("siasa_viewer: keyframeMsg_data.id********************", keyframeMsg_data.id)
+            rospy.loginfo("siasa_viewer: timestamp_now: %f", timestamp_now)
+            print("siasa_viewer: self.gt_timestamps: ", self.gt_timestamps)
+            rospy.loginfo("siasa_viewer: self.gt_end: %d", self.gt_end)
+        T_camToWorld = self.send_frame_to_siasa(camToWorld, '/cam_live_reinforced', keyframeMsg_data.id, self.prop_liveframe)
+        
 
-    def send_frame_to_siasa(self, camToWorld, cam_name, idx, cam_prop):
+    def send_frame_to_siasa(self, camToWorld, cam_name, idx, cam_prop, return_inverse=False):
         t = camToWorld[4:]
         q = camToWorld[:4]
         scale = np.linalg.norm(q)
@@ -137,10 +216,18 @@ class SiasaViewer(object):
         siasa.setCameraData(np.array(Rinv).astype(np.float32), np.array(tinv).astype(np.float32), cam_name, idx, self.connection)
         siasa.setProperties(cam_prop, cam_name)
         if self.debug:
-            print("camToWorld = ", camToWorld)
-            print("t = ", t)
-            print("scale = ", scale)
-        return T_camToWorld
+            print("siasa_viewer: scaled camToWorld message = ", camToWorld)
+            print("siasa_viewer: scale = ", scale)
+            print("siasa_viewer: t descaled camToWorld= ", t)
+            print("siasa_viewer: q descaled camToWorld = ", q_norm)
+            print("siasa_viewer: R descaled camToWorld = ", R)
+            print("siasa_viewer: T_camToWorld descaled = ", T_camToWorld)
+            print("siasa_viewer: t descaled worldToCam= ", tinv)
+            print("siasa_viewer: q descaled worldToCam = ", Rinv)
+        if return_inverse:
+            return np.array(Rinv).astype(np.float32), np.array(tinv).astype(np.float32)
+        else:
+            return T_camToWorld
 
     def convert_to_siasa_pointcloud(self, pointcloud_array, T_camToWorld, keyframeMsg_data):
         valid_points = 0
