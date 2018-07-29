@@ -264,14 +264,14 @@ class DeepTAMTracker(object):
                 
         rospy.loginfo("Returning tracked response")
 
-        if True:
+        if False:
             #cv2.imshow('depth_map', output_arrs['rendered_depth'][0, 0])
             cv2.imshow('warped_img', output_arrs['warped_image'][0].transpose([1,2,0])+0.5)
             #cv2.imshow('depth_normalized0', output_arrs['depth_normalized0'][0, 0])
             #cv2.imshow('key_image0', output_arrs['key_image0'][0].transpose([1,2,0])+0.5)
             #cv2.imshow('current_image0', output_arrs['current_image0'][0].transpose([1,2,0])+0.5)
             cv2.imshow('diff', np.abs(output_arrs['warped_image'][0] - output_arrs['current_image0'][0]).transpose([1,2,0]))
-            cv2.waitKey(100)
+            cv2.waitKey(0)
 
         return TrackImageResponse(Transform(Vector3(*tinv), self.rotation_matrix_to_quaternion(Rinv)))
 

@@ -63,7 +63,7 @@ class DepthmapFuser(object):
               #features['sparseInverseDepthVariance'].shape)
         return features
 
-    def fuse_depthmap_cb(self, req, debug=True):
+    def fuse_depthmap_cb(self, req, debug=False):
         rospy.loginfo("Received image and sparse idepths to fuse")
         # Requirement: RGB has to np array float32, normalized in range (-0.5,0.5), with shape (1,3,240,320)
         # Get the Keyframe RGB image from ROS message and convert it to openCV Image format
@@ -72,7 +72,7 @@ class DepthmapFuser(object):
         except CvBridgeError as e:
             print(e)
             return DepthFusionResponse(0)
-        if False:
+        if debug:
             cv2.imshow('Input RGB', rgb_image)
         rgb_tensor = self.convertOpenCvRGBToTfTensor(rgb_image)
         
@@ -92,14 +92,21 @@ class DepthmapFuser(object):
             self.predict_input_fn(rgb_tensor, sparse_idepth, sparse_idepth_var))
         #idepthmap_scaled = list(idepth_predictions)[0]['depth'][0] * req.scale
         prediction = list(idepth_predictions)[0]['depth']
-        print("prediction.shape:", prediction.shape)
         depthmap_predicted = prediction[0]
+
         if prediction.shape[0] > 1:
             confidence = prediction[1]
         else:
             confidence = np.ones_like(depthmap_predicted)
-        residual = -np.log(confidence)
-        #depthmap_predicted = np.where(depthmap_predicted > 0, 1. / depthmap_predicted, np.zeros_like(depthmap_predicted))
+
+        #** convert confidence to variance for LSD SLAM compatibality **#
+        #** (approach 1): change k_res according to the confidence function used while training the network **#
+        #k_res = 2.5
+        #residual = -np.log(confidence)/k_res
+        #** (approach 2): change minVar and maxVar as per need **#
+        minVar = 0.0001
+        maxVar = 0.125
+        residual = maxVar - (maxVar - minVar)*confidence
 
         # Doing cv_bridge conversion
         depthmap_predicted_msg = self._cv_bridge_depth.cv2_to_imgmsg(depthmap_predicted, "passthrough")

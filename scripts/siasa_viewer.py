@@ -71,7 +71,7 @@ class SiasaViewer(object):
         self.liveframe_sub = rospy.Subscriber("/lsd_slam/liveframes", keyframeMsg, self.liveframe_callback)
         #self.keyframe_sub = rospy.Subscriber("/lsd_slam/keyframes", keyframeMsg, self.keyframe_callback)
         self.siasa_sub = rospy.Subscriber("/lsd_slam/siasa_keyframes", keyframeMsgSiasa, self.keyframe_siasa_callback)
-        self.keyframe_graph_sub = rospy.Subscriber("/lsd_slam/graph", keyframeGraphMsg, self.keyframe_graph_callback)
+        #self.keyframe_graph_sub = rospy.Subscriber("/lsd_slam/graph", keyframeGraphMsg, self.keyframe_graph_callback)
         rospy.loginfo("Initialized siasa viewer node")
         rospy.spin()
 

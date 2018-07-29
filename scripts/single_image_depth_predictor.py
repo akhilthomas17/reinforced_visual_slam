@@ -58,7 +58,7 @@ class DepthmapPredictor(object):
               #features['sparseInverseDepthVariance'].shape)
         return features
 
-    def predict_depthmap_cb(self, req, debug=True):
+    def predict_depthmap_cb(self, req, debug=False):
         rospy.loginfo("Received image to predict depth")
         # Requirement: RGB has to np array float32, normalized in range (-0.5,0.5), with shape (1,3,H,W)
         # Get the Keyframe RGB image from ROS message and convert it to openCV Image format
@@ -67,22 +67,35 @@ class DepthmapPredictor(object):
         except CvBridgeError as e:
             print(e)
             return PredictDepthmapResponse(0)
-        if False:
+        if debug:
             cv2.imshow('Input RGB', rgb_image)
         rgb_tensor = self.convertOpenCvRGBToTfTensor(rgb_image)
-        print("Input rgb shape:", rgb_tensor.shape)
                 
         #***Get idepth prediction from net. Scale it back to input sparse idepth scale and invert it***
         idepth_predictions = self.lsd_depth_predictor.predict(lambda : 
             self.predict_input_fn(rgb_tensor))
         prediction = list(idepth_predictions)[0]['depth']
-        print("prediction.shape:", prediction.shape)
         depthmap_predicted = prediction[0]
-        #depthmap_predicted = np.where(depthmap_predicted > 0, 1. / depthmap_predicted, np.zeros_like(depthmap_predicted))
+        
+        if prediction.shape[0] > 1:
+            confidence = prediction[1]
+        else:
+            confidence = np.ones_like(depthmap_predicted)
 
+        #** convert confidence to variance for LSD SLAM compatibality **#
+        #** (approach 1): change k_res according to the confidence function used while training the network **#
+        #k_res = 2.5
+        #residual = -np.log(confidence)/k_res
+        #** (approach 2): change minVar and maxVar as per need **#
+        minVar = 0.0001
+        maxVar = 0.125
+        residual = maxVar - (maxVar - minVar)*confidence
+        
         # Doing cv_bridge conversion
         depthmap_predicted_msg = self._cv_bridge_depth.cv2_to_imgmsg(depthmap_predicted, "passthrough")
         depthmap_predicted_msg.step = int (depthmap_predicted_msg.step)
+        residual_msg = self._cv_bridge_depth.cv2_to_imgmsg(residual, "passthrough")
+        residual_msg.step = int(residual_msg.step)
         if debug:
             print("depthmap_predicted max:", np.max(depthmap_predicted))
             print("depthmap_predicted min:", np.min(depthmap_predicted))
@@ -101,7 +114,7 @@ class DepthmapPredictor(object):
             #plt.colorbar()
             #plt.show()
 
-        return PredictDepthmapResponse(depthmap_predicted_msg)
+        return PredictDepthmapResponse(depthmap_predicted_msg, residual_msg)
 
     def run(self):
         service = rospy.Service('predict_depthmap', PredictDepthmap, self.predict_depthmap_cb)
@@ -115,8 +128,10 @@ if __name__ == "__main__":
     predictor = DepthmapPredictor()
 
     # params to change for network:
-    model_name = "NetV0_L1SigL1_tr1"
-    model_function = modelfn_NetV0_LossL1SigL1
+    #model_name = "NetV0_L1SigL1_tr1"
+    model_name = "NetV0l_L1SigL1_tr2"
+    #model_function = modelfn_NetV0_LossL1SigL1
+    model_function = modelfn_NetV0l_LossL1SigL1
     rospy.loginfo("Loading single image depth predictor model: %s", model_name)
     
     model_base_dir = "/misc/lmbraid19/thomasa/catkin_ws/src/reinforced_visual_slam/networks/depth_fusion/training"
