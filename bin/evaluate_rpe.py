@@ -397,7 +397,6 @@ def evaluate_rpe(_args):
     }
 
 
-
 if __name__ == '__main__':
     random.seed(0)
 
@@ -415,6 +414,7 @@ if __name__ == '__main__':
     parser.add_argument('--save', help='text file to which the evaluation will be saved (format: stamp_est0 stamp_est1 stamp_gt0 stamp_gt1 trans_error rot_error)')
     parser.add_argument('--plot', help='plot the result to a file (requires --fixed_delta, output format: png)')
     parser.add_argument('--verbose', help='print all evaluation data (otherwise, only the mean translational error measured in meters will be printed)', action='store_true')
+    parser.add_argument('--summary', help='save summary file to disk')
     args = parser.parse_args()
     
     if args.plot and not args.fixed_delta:
@@ -459,6 +459,27 @@ if __name__ == '__main__':
         print( "rotational_error.max %f deg"%(numpy.max(rot_error) * 180.0 / numpy.pi))
     else:
         print( numpy.mean(trans_error))
+
+    if args.summary:
+        with open(args.summary, "w") as f:
+            f.write( "number of poses in estimated file: %d poses\n"%len(traj_est))
+            f.write( "number of poses in gt file: %d poses\n"%len(traj_gt))
+            f.write( "compared_pose_pairs %d pairs\n"%(len(trans_error)))
+            f.write( "translational_error.rmse %f m\n"%numpy.sqrt(numpy.dot(trans_error,trans_error) / len(trans_error)))
+            f.write( "translational_error.mean %f m\n"%numpy.mean(trans_error))
+            f.write( "translational_error.median %f m\n"%numpy.median(trans_error))
+            f.write( "translational_error.std %f m\n"%numpy.std(trans_error))
+            f.write( "translational_error.min %f m\n"%numpy.min(trans_error))
+            f.write( "translational_error.max %f m\n"%numpy.max(trans_error))
+
+            f.write( "rotational_error.rmse %f deg\n"%(numpy.sqrt(numpy.dot(rot_error,rot_error) / len(rot_error)) * 180.0 / numpy.pi))
+            f.write( "rotational_error.mean %f deg\n"%(numpy.mean(rot_error) * 180.0 / numpy.pi))
+            f.write( "rotational_error.median %f deg\n"%(numpy.median(rot_error) * 180.0 / numpy.pi))
+            f.write( "rotational_error.std %f deg\n"%(numpy.std(rot_error) * 180.0 / numpy.pi))
+            f.write( "rotational_error.min %f deg\n"%(numpy.min(rot_error) * 180.0 / numpy.pi))
+            f.write( "rotational_error.max %f deg\n"%(numpy.max(rot_error) * 180.0 / numpy.pi))
+
+
 
     if args.plot:    
         import matplotlib

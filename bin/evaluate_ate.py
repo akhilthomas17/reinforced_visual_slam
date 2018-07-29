@@ -44,9 +44,9 @@ import sys
 import numpy
 import argparse
 if __name__=="__main__":
-    import associate
+    import associate_ov as associate
 else:
-    from . import associate
+    from . import associate_ov as associate
 
 def align(model,data):
     """Align two trajectories using the method of Horn (closed-form).
@@ -224,6 +224,7 @@ if __name__=="__main__":
     parser.add_argument('--save_associations', help='save associated first and aligned second trajectory to disk (format: stamp1 x1 y1 z1 stamp2 x2 y2 z2)')
     parser.add_argument('--plot', help='plot the first and the aligned second trajectory to an image (format: png)')
     parser.add_argument('--verbose', help='print all evaluation data (otherwise, only the RMSE absolute translational error in meters after alignment will be printed)', action='store_true')
+    parser.add_argument('--summary', help='save summary file to disk')
     args = parser.parse_args()
 
     first_list = associate.read_file_list(args.first_file)
@@ -251,7 +252,6 @@ if __name__=="__main__":
     
     if args.verbose:
         print( "compared_pose_pairs %d pairs"%(len(trans_error)))
-             
         print( "absolute_translational_error.rmse %f m"%numpy.sqrt(numpy.dot(trans_error,trans_error) / len(trans_error)))
         print( "absolute_translational_error.mean %f m"%numpy.mean(trans_error))
         print( "absolute_translational_error.median %f m"%numpy.median(trans_error))
@@ -270,6 +270,18 @@ if __name__=="__main__":
         file = open(args.save,"w")
         file.write("\n".join(["%f "%stamp+" ".join(["%f"%d for d in line]) for stamp,line in zip(second_stamps,second_xyz_full_aligned.transpose().A)]))
         file.close()
+
+    if args.summary:
+        with open(args.summary, "w") as f:
+            f.write( "number of poses in estimated file: %d poses\n"%len(second_list))
+            f.write( "number of poses in gt file: %d poses\n"%len(first_list))
+            f.write( "compared_pose_pairs %d pairs\n"%(len(trans_error)))
+            f.write( "absolute_translational_error.rmse %f m\n"%numpy.sqrt(numpy.dot(trans_error,trans_error) / len(trans_error)))
+            f.write( "absolute_translational_error.mean %f m\n"%numpy.mean(trans_error))
+            f.write( "absolute_translational_error.median %f m\n"%numpy.median(trans_error))
+            f.write( "absolute_translational_error.std %f m\n"%numpy.std(trans_error))
+            f.write( "absolute_translational_error.min %f m\n"%numpy.min(trans_error))
+            f.write( "absolute_translational_error.max %f m\n"%numpy.max(trans_error))
 
     if args.plot:
         import matplotlib
