@@ -13,6 +13,25 @@ from net.my_losses import *
 # model functions used while training (needed for checkpoint based restore)
 ########
 
+def model_fn_NetV02Res_LossL1SigL1ExpResL1(features, labels, mode, params):
+  """
+  Used in the net version resembling sparse invariant cnn with confidence prediction
+  model dir names and properties:
+  model_name = NetV02Res_L1Sig4L1ExpResL1_tr1, lr=0.00014, weights = [500, 1500, 50],
+                sig_params_list_current = [{'deltas':[4,], 'weights':[1,], 'epsilon': 1e-9},],
+                res_converter_exp_conf(k=2.5) day2_lr=0.00007
+  """
+  def loss_function(inp, gt, data_format='channels_first'):
+    weights = [500, 1500, 50]
+    def res_converter(res_gt):
+      return res_converter_exp_conf(res_gt, k=2.5)
+    sig_params_list_current = [{'deltas':[4,], 'weights':[1,], 'epsilon': 1e-9},]
+    return pointwise_l1_loss_sig_l1_loss_res_l1_loss(inp, gt, data_format=data_format, weights=weights,
+      res_converter=res_converter, sig_params_list=sig_params_list_current)
+  network = NetworkV02Res
+  learning_rate_base = 0.00007
+  return model_fn_general(features, labels, mode, params, loss_function, network, learning_rate_base)
+
 def model_fn_NetV04_LossL1SigL1(features, labels, mode, params):
   """
   model dir names and properties:
@@ -35,14 +54,19 @@ def model_fn_NetV04Res_LossL1SigL1ExpResL1(features, labels, mode, params):
     model_name = NetV04Res_L1Sig4L1ExpResL1_down_tr1, weights=[500, 1500, 500], res_converter_exp_conf, lr=0.00014,
                   sig_params_list_current = [{'deltas':[4,], 'weights':[1,], 'epsilon': 1e-9},]
     model_name = NetV04Res_L1Sig4L1ExpResL1_down_tr2, same as tr1 but with the new training dataset
+    model_name = NetV04Res_L1Sig4L1ExpResL1_down_tr3, weights=[500, 1500, 100], res_converter_exp_conf(k=2.5), lr=0.00014,
+                  sig_params_list_current = [{'deltas':[4,], 'weights':[1,], 'epsilon': 1e-9},]
+    model_name = NetV04Res_L1Sig4L1ExpResL1_down_tr4, weights=[500, 1500, 500], res_converter_exp_conf(k=0.2), lr=0.00014,
+                  sig_params_list_current = [{'deltas':[4,], 'weights':[1,], 'epsilon': 1e-9},]
 
   """
   def loss_function(inp, gt, data_format='channels_first'):
-    weights = [500, 1500, 500]
-    res_converter = res_converter_exp_conf
+    weights = [500, 1500, 100]
+    def res_converter(res_gt):
+      return res_converter_exp_conf(res_gt, k=2.5)
     sig_params_list_current = [{'deltas':[4,], 'weights':[1,], 'epsilon': 1e-9},]
     return pointwise_l1_loss_sig_l1_loss_res_l1_loss(inp, gt, data_format=data_format, weights=weights,
-      res_converter=res_converter_exp_conf, sig_params_list=sig_params_list_current)
+      res_converter=res_converter, sig_params_list=sig_params_list_current)
   network = NetworkV04Res
   learning_rate_base = 0.00014
   return model_fn_general(features, labels, mode, params, loss_function, network, learning_rate_base)
@@ -179,11 +203,11 @@ def model_fn_general(features, labels, mode, params, loss_function, network, lea
       labels_nhwc = sops.replace_nonfinite(labels)
     if depth_nhwc.shape[-1]==2:
       depths_nhwc = tf.concat([sparseIdepth_nhwc[0:1,:,:,:], depth_nhwc[0:1,:,:,0:1], 
-        labels_nhwc[0:1,:,:,:]], 0)
+        labels_nhwc[0:1,:,:,:]], 2)
     else:
       depths_nhwc = tf.concat([sparseIdepth_nhwc[0:1,:,:,:], depth_nhwc[0:1,:,:,:], 
-        labels_nhwc[0:1:,:,:]], 0)
-    tf.summary.image('depths', depths_nhwc, max_outputs=3)
+        labels_nhwc[0:1:,:,:]], 2)
+    tf.summary.image('depths', depths_nhwc, max_outputs=1)
     #tf.summary.image('depthGt', labels_nhwc, max_outputs=1)  
 
     # Save scalars to Tensorboard output.
@@ -207,6 +231,26 @@ def model_fn_general(features, labels, mode, params, loss_function, network, lea
 #######################
 # single Image models 
 #######################
+
+def modelfn_NetV0lRes_LossL1SigL1ExpResL1(features, labels, mode, params):
+  """
+    Network for single image depth prediction.
+    model_dir names and properties of instances:
+    model_name =  NetV0lRes_L1SigL1ExpResL1_tr1 weights=[500, 1500, 50], res_converter_exp_conf(k=2.5), lr=0.0002, 
+                  sig_params_list_current = [{'deltas':[4,], 'weights':[1,], 'epsilon': 1e-9},]
+    model_name =  NetV0lRes_L1SigL1ExpResL1_tr2 weights=[500, 1500, 50], res_converter_exp_conf, lr=0.00014, 
+                  sig_params_list_current = [{'deltas':[4,], 'weights':[1,], 'epsilon': 1e-9},]
+  """ 
+  def loss_function(inp, gt, data_format='channels_first'):
+    weights = [500, 1500, 50]
+    def res_converter(res_gt):
+      return res_converter_exp_conf(res_gt, k=2.5)
+    sig_params_list_current = [{'deltas':[4,], 'weights':[1,], 'epsilon': 1e-9},]
+    return pointwise_l1_loss_sig_l1_loss_res_l1_loss(inp, gt, data_format=data_format, weights=weights,
+      res_converter=res_converter, sig_params_list=sig_params_list_current)
+  learning_rate_base = 0.00014
+  network = NetworkV0lRes
+  return model_fn_general_singleImage(features, labels, mode, params, loss_function, network, learning_rate_base)
 
 def modelfn_NetV0l_LossL1SigL1(features, labels, mode, params):
   """
@@ -290,10 +334,10 @@ def model_fn_general_singleImage(features, labels, mode, params, loss_function, 
       depth_nhwc = depth
       labels_nhwc = sops.replace_nonfinite(labels)
     if depth_nhwc.shape[-1]==2:
-      depths_nhwc = tf.concat([depth_nhwc[0:1,:,:,0:1], labels_nhwc[0:1,:,:,:]], 0)
+      depths_nhwc = tf.concat([depth_nhwc[0:1,:,:,0:1], labels_nhwc[0:1,:,:,:]], 2)
     else:
-      depths_nhwc = tf.concat([depth_nhwc[0:1,:,:,:], labels_nhwc[0:1:,:,:]], 0)
-    tf.summary.image('depths', depths_nhwc, max_outputs=2)
+      depths_nhwc = tf.concat([depth_nhwc[0:1,:,:,:], labels_nhwc[0:1:,:,:]], 2)
+    tf.summary.image('depths', depths_nhwc, max_outputs=1)
     #tf.summary.image('depthGt', labels_nhwc, max_outputs=1)  
 
     # Save scalars to Tensorboard output.

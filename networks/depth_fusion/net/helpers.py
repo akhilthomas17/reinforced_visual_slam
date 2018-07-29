@@ -8,8 +8,16 @@ import numpy as np
 ##helpers my_losses
 #################
 
-def res_converter_exp_conf(res_gt):
-    k = 1
+def nan_mean(x):
+  # x will be a numpy array with the contents of the placeholder below
+  return np.nanmean(np.abs(x))
+
+
+def res_converter_exp_conf(res_gt, k = 1):
+    ## plotting mean value to help decide the k
+    mean_res = tf.py_func(nan_mean, [res_gt], tf.float32)
+    tf.summary.scalar("mean_residual", mean_res)
+    ## converting residual to confidence in range (0,1]
     res_gt =  tf.exp(tf.scalar_mul(-k, res_gt))
     return res_gt
 

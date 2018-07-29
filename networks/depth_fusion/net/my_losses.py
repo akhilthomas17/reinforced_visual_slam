@@ -42,9 +42,9 @@ def pointwise_l1_loss_sig_l1_loss_res_l1_loss(pred, gt, data_format='channels_fi
                 inp_sig_nhwc = sops.replace_nonfinite(tf.transpose(inp_sig[ind], [0,2,3,1]))
                 gt_sig_nhwc = sops.replace_nonfinite(tf.transpose(gt_sig[ind], [0,2,3,1]))
             sigs_nhwc = tf.concat([inp_sig_nhwc[0:1,:,:,0:1], gt_sig_nhwc[0:1,:,:,0:1], 
-                inp_sig_nhwc[0:1,:,:,1:], gt_sig_nhwc[0:1,:,:,1:]], 0)
+                inp_sig_nhwc[0:1,:,:,1:], gt_sig_nhwc[0:1,:,:,1:]], 2)
             print('sigs_nhwc.shape', sigs_nhwc.shape)
-            tf.summary.image('sigs'+str(ind), sigs_nhwc, max_outputs=4)
+            tf.summary.image('sigs'+str(ind), sigs_nhwc, max_outputs=1)
             loss_depth2_sig = mean_l1_loss_nonfinite(inp_sig[ind], gt_sig[ind])
             tf.summary.scalar('loss_depth2_sig'+str(ind), loss_depth2_sig)
             tf.losses.add_loss(weights[1] * loss_depth2_sig)
@@ -59,8 +59,9 @@ def pointwise_l1_loss_sig_l1_loss_res_l1_loss(pred, gt, data_format='channels_fi
         else:
             res_gt_nhwc = sops.replace_nonfinite(tf.transpose(res_gt, [0,2,3,1]))
             res_pr_nhwc = tf.transpose(res, [0,2,3,1])
-        res_nhwc = tf.concat([res_pr_nhwc[0:1, :, :, :], res_gt_nhwc[0:1, :, :, :]], 0)
-        tf.summary.image('confidence', res_nhwc, max_outputs=2)
+        res_nhwc = tf.concat([res_pr_nhwc[0:1, :, :, :], res_gt_nhwc[0:1, :, :, :]], 2)
+        tf.summary.image('confidence', res_nhwc, max_outputs=1)
+        
         # calculating loss
         loss_res = mean_l1_loss_nonfinite(res, res_gt)
         tf.summary.scalar('loss_res', loss_res)
